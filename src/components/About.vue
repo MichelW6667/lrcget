@@ -15,7 +15,7 @@
             <div v-if="isUpdateAvailable" class="font-bold text-yellow-600 flex flex-wrap gap-1 items-center">
               <Alert class="text-lg"/>
               New update is available. See what's new and download at
-              <span><a :href="newestReleaseUrl" class="link" target="_blank" @click="downloadUpdate">LRCGET GitHub Release Page</a>!</span>
+              <span><a :href="newestReleaseUrl" class="link" target="_blank">LRCGET GitHub Release Page</a>!</span>
             </div>
             <div v-else class="font-bold text-green-600 flex flex-wrap gap-1 items-center">
               <CheckCircle class="text-lg"/>
@@ -79,11 +79,11 @@
 
         <div class="text-sm">
           <div class="mb-1">
-            Github URL: <a href="https://github.com/tranxuanthang/lrcget" class="link" target="_blank" @click="downloadUpdate">github.com/tranxuanthang/lrcget</a>
+            Github URL: <a href="https://github.com/tranxuanthang/lrcget" class="link" target="_blank">github.com/tranxuanthang/lrcget</a>
           </div>
 
           <div>
-            Email: <a href="mailto:hoangtudevops@protonmail.com" class="link" target="_blank" @click="downloadUpdate">hoangtudevops@protonmail.com</a>
+            Email: <a href="mailto:hoangtudevops@protonmail.com" class="link" target="_blank">hoangtudevops@protonmail.com</a>
           </div>
         </div>
       </div>

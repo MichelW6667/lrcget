@@ -1,5 +1,5 @@
 use crate::db;
-use crate::fs_track::{self, FsTrack};
+use crate::fs_track;
 use crate::persistent_entities::{PersistentAlbum, PersistentArtist, PersistentTrack};
 use anyhow::Result;
 use rusqlite::Connection;
@@ -37,13 +37,6 @@ pub fn initialize_library(conn: &mut Connection, app_handle: AppHandle) -> Resul
 pub fn uninitialize_library(conn: &Connection) -> Result<()> {
     db::clean_library(conn)?;
     db::set_init(false, conn)?;
-    Ok(())
-}
-
-pub fn add_tracks(tracks: Vec<FsTrack>, conn: &Connection) -> Result<()> {
-    for track in tracks.iter() {
-        db::add_track(&track, conn)?;
-    }
     Ok(())
 }
 

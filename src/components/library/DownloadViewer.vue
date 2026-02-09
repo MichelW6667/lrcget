@@ -1,10 +1,9 @@
 <template>
   <BaseModal
-    title="Configuration"
+    :title="isFinished ? 'Downloaded' : 'Downloading'"
     @close="checkAndClose"
     content-class="w-full h-[80vh] max-w-screen-md"
     body-class="flex flex-col h-full min-h-0 justify-between gap-6"
-    :title="isFinished ? 'Downloaded' : 'Downloading'"
   >
     <div class="flex flex-col items-center justify-center gap-1">
       <div class="w-full bg-brave-95 h-1 rounded">

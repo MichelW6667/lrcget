@@ -15,7 +15,7 @@
 </template>
 
 <script setup>
-import { Bug, WindowMinimize, WindowMaximize, WindowClose } from 'mdue'
+import { Bug } from 'mdue'
 import ChooseDirectory from "./components/ChooseDirectory.vue";
 import Library from "./components/Library.vue";
 import { ref, onMounted, onUnmounted, watch } from 'vue'
@@ -34,7 +34,6 @@ const { downloadNext } = useDownloader()
 
 const loading = ref(true)
 const init = ref(false)
-const isProd = ref(import.meta.env.PROD)
 
 const uninitializeLibrary = async () => {
   loading.value = true
@@ -85,18 +84,6 @@ const darkModeHandle = async (themeMode) => {
 
 const openDevtools = () => {
   invoke("open_devtools");
-}
-
-const minimizeWindow = () => {
-  appWindow.minimize()
-}
-
-const maximizeWindow = () => {
-  appWindow.toggleMaximize()
-}
-
-const closeWindow = () => {
-  appWindow.close()
 }
 
 appWindow.onThemeChanged(({ payload: theme }) => {
