@@ -1,17 +1,15 @@
-use std::time::Duration;
-
 use crate::utils::strip_timestamp;
 use anyhow::Result;
-use reqwest;
 use serde::{Deserialize, Serialize};
-use thiserror::Error;
+
+use super::{ResponseError, HTTP_CLIENT};
 
 #[derive(Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RawResponse {
     pub plain_lyrics: Option<String>,
     pub synced_lyrics: Option<String>,
-    instrumental: bool,
+    pub instrumental: bool,
     lang: Option<String>,
     isrc: Option<String>,
     spotify_id: Option<String>,
@@ -55,15 +53,6 @@ impl Response {
     }
 }
 
-#[derive(Error, Deserialize, Debug)]
-#[serde(rename_all = "camelCase")]
-#[error("{error}: {message}")]
-pub struct ResponseError {
-    status_code: Option<u16>,
-    error: String,
-    message: String,
-}
-
 async fn make_request(
     title: &str,
     album_name: &str,
@@ -78,18 +67,9 @@ async fn make_request(
         ("duration".to_owned(), duration.round().to_string()),
     ];
 
-    let version = env!("CARGO_PKG_VERSION");
-    let user_agent = format!(
-        "LRCGET v{} (https://github.com/tranxuanthang/lrcget)",
-        version
-    );
-    let client = reqwest::Client::builder()
-        .timeout(Duration::from_secs(10))
-        .user_agent(user_agent)
-        .build()?;
     let api_endpoint = format!("{}/api/get", lrclib_instance.trim_end_matches('/'));
     let url = reqwest::Url::parse_with_params(&api_endpoint, &params)?;
-    Ok(client.get(url).send().await?)
+    Ok(HTTP_CLIENT.get(url).send().await?)
 }
 
 pub async fn request_raw(

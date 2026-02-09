@@ -1,9 +1,7 @@
-use std::time::Duration;
-
 use anyhow::Result;
-use reqwest;
 use serde::{Deserialize, Serialize};
-use thiserror::Error;
+
+use super::{ResponseError, HTTP_CLIENT};
 
 #[derive(Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -21,15 +19,6 @@ struct SearchItem {
 #[derive(Deserialize, Serialize)]
 pub struct Response(Vec<SearchItem>);
 
-#[derive(Error, Deserialize, Debug)]
-#[serde(rename_all = "camelCase")]
-#[error("{error}: {message}")]
-pub struct ResponseError {
-    status_code: Option<u16>,
-    error: String,
-    message: String,
-}
-
 pub async fn request(
     title: &str,
     album_name: &str,
@@ -44,18 +33,9 @@ pub async fn request(
         ("q".to_owned(), q.to_owned()),
     ];
 
-    let version = env!("CARGO_PKG_VERSION");
-    let user_agent = format!(
-        "LRCGET v{} (https://github.com/tranxuanthang/lrcget)",
-        version
-    );
-    let client = reqwest::Client::builder()
-        .timeout(Duration::from_secs(10))
-        .user_agent(user_agent)
-        .build()?;
     let api_endpoint = format!("{}/api/search", lrclib_instance.trim_end_matches('/'));
     let url = reqwest::Url::parse_with_params(&api_endpoint, &params)?;
-    let res = client.get(url).send().await?;
+    let res = HTTP_CLIENT.get(url).send().await?;
 
     match res.status() {
         reqwest::StatusCode::OK => {

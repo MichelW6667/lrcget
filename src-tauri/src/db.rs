@@ -2,10 +2,9 @@ use crate::fs_track;
 use crate::persistent_entities::{
     PersistentAlbum, PersistentArtist, PersistentConfig, PersistentTrack,
 };
-use crate::utils::prepare_input;
+use crate::utils::{prepare_input, RE_INSTRUMENTAL};
 use anyhow::Result;
 use indoc::indoc;
-use regex::Regex;
 use rusqlite::{named_params, params, Connection};
 use std::fs;
 use tauri::{AppHandle, Manager};
@@ -446,12 +445,10 @@ pub fn add_track(track: &fs_track::FsTrack, db: &Connection) -> Result<()> {
         Err(_) => add_album(&track.album(), &track.album_artist(), db)?,
     };
 
-    // Create a regex to match "[au: instrumental]" or "[au:instrumental]"
-    let re = Regex::new(r"\[au:\s*instrumental\]").expect("Invalid regex");
     let is_instrumental = track
         .lrc_lyrics()
         .as_ref()
-        .map_or(false, |lyrics| re.is_match(lyrics));
+        .map_or(false, |lyrics| RE_INSTRUMENTAL.is_match(lyrics));
 
     let query = indoc! {"
     INSERT INTO tracks (

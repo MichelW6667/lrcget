@@ -1,9 +1,7 @@
-use std::time::Duration;
-
 use anyhow::Result;
-use reqwest;
-use serde::{Deserialize, Serialize};
-use thiserror::Error;
+use serde::Serialize;
+
+use super::{ResponseError, HTTP_CLIENT};
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -14,15 +12,6 @@ pub struct Request {
     duration: f64,
     plain_lyrics: String,
     synced_lyrics: String,
-}
-
-#[derive(Error, Deserialize, Debug)]
-#[serde(rename_all = "camelCase")]
-#[error("{error}: {message}")]
-pub struct ResponseError {
-    status_code: Option<u16>,
-    error: String,
-    message: String,
 }
 
 pub async fn request(
@@ -44,18 +33,9 @@ pub async fn request(
         synced_lyrics: synced_lyrics.to_owned(),
     };
 
-    let version = env!("CARGO_PKG_VERSION");
-    let user_agent = format!(
-        "LRCGET v{} (https://github.com/tranxuanthang/lrcget)",
-        version
-    );
-    let client = reqwest::Client::builder()
-        .timeout(Duration::from_secs(10))
-        .user_agent(user_agent)
-        .build()?;
     let api_endpoint = format!("{}/api/publish", lrclib_instance.trim_end_matches('/'));
     let url = reqwest::Url::parse(&api_endpoint)?;
-    let res = client
+    let res = HTTP_CLIENT
         .post(url)
         .header("X-Publish-Token", publish_token)
         .json(&data)

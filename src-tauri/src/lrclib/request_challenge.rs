@@ -1,9 +1,7 @@
-use std::time::Duration;
-
 use anyhow::Result;
-use reqwest;
 use serde::Deserialize;
-use thiserror::Error;
+
+use super::{ResponseError, HTTP_CLIENT};
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -12,31 +10,13 @@ pub struct Response {
     pub target: String,
 }
 
-#[derive(Error, Deserialize, Debug)]
-#[serde(rename_all = "camelCase")]
-#[error("{error}: {message}")]
-pub struct ResponseError {
-    status_code: Option<u16>,
-    error: String,
-    message: String,
-}
-
 pub async fn request(lrclib_instance: &str) -> Result<Response> {
-    let version = env!("CARGO_PKG_VERSION");
-    let user_agent = format!(
-        "LRCGET v{} (https://github.com/tranxuanthang/lrcget)",
-        version
-    );
-    let client = reqwest::Client::builder()
-        .timeout(Duration::from_secs(10))
-        .user_agent(user_agent)
-        .build()?;
     let api_endpoint = format!(
         "{}/api/request-challenge",
         lrclib_instance.trim_end_matches('/')
     );
     let url = reqwest::Url::parse(&api_endpoint)?;
-    let res = client.post(url).send().await?;
+    let res = HTTP_CLIENT.post(url).send().await?;
 
     match res.status() {
         reqwest::StatusCode::OK => {
