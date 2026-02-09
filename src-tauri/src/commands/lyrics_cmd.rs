@@ -28,6 +28,14 @@ pub async fn download_lyrics(track_id: i64, app_handle: AppHandle) -> Result<Str
     let track = app_handle
         .db(|db| db::get_track_by_id(track_id, db))
         .map_err(|err| err.to_string())?;
+
+    // Skip if track already has synced lyrics (already best quality)
+    let has_synced = track.lrc_lyrics.as_ref().is_some_and(|l| l != "[au: instrumental]");
+    if has_synced {
+        return Ok("Skipped: already has synced lyrics".to_owned());
+    }
+    let has_plain = track.txt_lyrics.is_some();
+
     let config = app_handle
         .db(|db| db::get_config(db))
         .map_err(|err| err.to_string())?;
@@ -46,6 +54,10 @@ pub async fn download_lyrics(track_id: i64, app_handle: AppHandle) -> Result<Str
             Ok("Synced lyrics downloaded".to_owned())
         }
         lrclib::get::Response::UnsyncedLyrics(plain_lyrics) => {
+            if has_plain {
+                // Skip: track already has plain lyrics and no synced upgrade is available
+                return Ok("Skipped: already has plain lyrics, no synced available".to_owned());
+            }
             app_handle
                 .db(|db: &Connection| db::update_track_plain_lyrics(track_id, &plain_lyrics, db))
                 .map_err(|err| err.to_string())?;
