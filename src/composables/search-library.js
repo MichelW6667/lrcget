@@ -9,9 +9,9 @@ const filters = ref({
 })
 
 export function useSearchLibrary() {
-  const setSearch = (text, filters) => {
+  const setSearch = (text, newFilters) => {
     searchValue.value = text
-    filters.value = filters
+    filters.value = newFilters
   }
 
   return {

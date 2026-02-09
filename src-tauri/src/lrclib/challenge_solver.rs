@@ -1,12 +1,12 @@
 use data_encoding::HEXUPPER;
 use ring::digest::{Context, SHA256};
 
-fn verify_nonce(result: &Vec<u8>, target: &Vec<u8>) -> bool {
+fn verify_nonce(result: &[u8], target: &[u8]) -> bool {
     if result.len() != target.len() {
         return false;
     }
 
-    for i in 0..(result.len() - 1) {
+    for i in 0..result.len() {
         if result[i] > target[i] {
             return false;
         } else if result[i] < target[i] {
@@ -14,7 +14,7 @@ fn verify_nonce(result: &Vec<u8>, target: &Vec<u8>) -> bool {
         }
     }
 
-    return true;
+    true
 }
 
 pub fn solve_challenge(prefix: &str, target_hex: &str) -> String {
