@@ -18,9 +18,10 @@
 import { Bug, WindowMinimize, WindowMaximize, WindowClose } from 'mdue'
 import ChooseDirectory from "./components/ChooseDirectory.vue";
 import Library from "./components/Library.vue";
-import { ref, onMounted, watch } from 'vue'
+import { ref, onMounted, onUnmounted, watch } from 'vue'
 import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow'
 import { invoke } from '@tauri-apps/api/core'
+import { listen } from '@tauri-apps/api/event'
 import { ModalsContainer } from 'vue-final-modal'
 import { useGlobalState } from './composables/global-state'
 import { useDownloader } from '@/composables/downloader.js'
@@ -48,24 +49,26 @@ onMounted(async () => {
   await loadGlobalState()
   darkModeHandle(themeMode.value)
   downloadNext()
-  drainNotifications()
+  unlistenNotification = await listen('app-notification', (event) => {
+    const notification = event.payload
+    toast(notification.message, {
+      type: notification.type,
+    })
+  })
+})
+
+let unlistenNotification = null
+
+onUnmounted(() => {
+  if (unlistenNotification) {
+    unlistenNotification()
+  }
 })
 
 const loadGlobalState = async () => {
   const config = await invoke('get_config')
   setThemeMode(config.theme_mode)
   setLrclibInstance(config.lrclib_instance)
-}
-
-const drainNotifications = async () => {
-  setInterval(async () => {
-    const notifications = await invoke('drain_notifications')
-    notifications.forEach((notification) => {
-      toast(notification.message, {
-        type: notification.type,
-      })
-    })
-  }, 100)
 }
 
 const darkModeHandle = async (themeMode) => {
