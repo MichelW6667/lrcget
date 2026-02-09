@@ -1,5 +1,22 @@
 # Changelog
 
+## [1.1.0] - 2026-02-09
+
+### Added
+- Sort options for track lists: sort by title, duration, track number, or lyrics status (asc/desc)
+- Lyrics type preference setting: choose between synced & plain (both), synced only, or plain only
+- Lyrics coverage dashboard: stacked progress bar showing synced/plain/instrumental/missing counts
+- Duration tolerance fallback: when exact match fails, search for tracks within a configurable duration window (default ± 3s)
+- Fuzzy text matching fallback: broader search with Jaccard word similarity validation when field-based search fails
+- Configurable duration tolerance (0–5s range slider) and fuzzy search toggle in settings
+- Retry failed downloads button in download viewer
+- Separate download status counters: Found, Skipped (orange), Not Found, Failed (red)
+- Apply button in lyrics Preview modal to apply search results directly
+- Instrumental tracks now saved as `.lrc` with `[au: instrumental]` marker
+
+### Changed
+- Bump version to 1.1.0
+
 ## [1.0.3] - 2026-02-09
 
 ### Fixed

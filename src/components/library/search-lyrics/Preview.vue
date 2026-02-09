@@ -27,6 +27,10 @@
         {{ props.lyrics.plainLyrics }}
       </div>
     </div>
+
+    <template #footer>
+      <button class="button button-primary px-8 py-2 rounded-full" @click="applyLyrics">Apply</button>
+    </template>
   </BaseModal>
 </template>
 
@@ -36,10 +40,13 @@ import { Loading, Play, Pause } from 'mdue'
 import { usePlayer } from '@/composables/player.js'
 import { Lrc, Runner } from 'lrc-kit'
 import Seek from '@/components/now-playing/Seek.vue'
+import { invoke } from '@tauri-apps/api/core'
+import { useToast } from 'vue-toastification'
 
+const toast = useToast()
 const props = defineProps(['track', 'lyrics'])
 const { playingTrack, status, duration, progress, playTrack, pause, resume, stop, seek } = usePlayer()
-const emit = defineEmits(['close'])
+const emit = defineEmits(['close', 'applied'])
 
 const runner = ref(null)
 const parsedLyrics = ref(null)
@@ -79,6 +86,18 @@ const fullViewTransform = computed(() => {
 
   return `translateY(calc(50% - 2.5em - ${currentLineElementOffset.value}px))`
 })
+
+const applyLyrics = async () => {
+  try {
+    const result = await invoke('apply_lyrics', { trackId: props.track.id, lrclibResponse: props.lyrics })
+    toast.success(result)
+    emit('applied')
+    emit('close')
+  } catch (error) {
+    console.error(error)
+    toast.error(error)
+  }
+}
 
 onMounted(() => {
   playTrack(props.track)

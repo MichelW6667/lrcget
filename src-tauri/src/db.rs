@@ -1,6 +1,6 @@
 use crate::fs_track;
 use crate::persistent_entities::{
-    PersistentAlbum, PersistentArtist, PersistentConfig, PersistentTrack,
+    LibraryStats, PersistentAlbum, PersistentArtist, PersistentConfig, PersistentTrack,
 };
 use crate::utils::{prepare_input, RE_INSTRUMENTAL};
 use anyhow::Result;
@@ -9,7 +9,7 @@ use rusqlite::{named_params, params, Connection};
 use std::fs;
 use tauri::{AppHandle, Manager};
 
-const CURRENT_DB_VERSION: u32 = 7;
+const CURRENT_DB_VERSION: u32 = 10;
 
 /// Initializes the database connection, creating the .sqlite file if needed, and upgrading the database
 /// if it's out of date.
@@ -199,6 +199,45 @@ pub fn upgrade_database_if_needed(
 
             tx.commit()?;
         }
+
+        if existing_version <= 7 {
+            println!("Migrate database version 8...");
+            let tx = db.transaction()?;
+
+            tx.pragma_update(None, "user_version", 8)?;
+
+            tx.execute_batch(indoc! {"
+            ALTER TABLE config_data ADD lyrics_type_preference TEXT DEFAULT 'both';
+            "})?;
+
+            tx.commit()?;
+        }
+
+        if existing_version <= 8 {
+            println!("Migrate database version 9...");
+            let tx = db.transaction()?;
+
+            tx.pragma_update(None, "user_version", 9)?;
+
+            tx.execute_batch(indoc! {"
+            ALTER TABLE config_data ADD duration_tolerance REAL DEFAULT 3.0;
+            "})?;
+
+            tx.commit()?;
+        }
+
+        if existing_version <= 9 {
+            println!("Migrate database version 10...");
+            let tx = db.transaction()?;
+
+            tx.pragma_update(None, "user_version", 10)?;
+
+            tx.execute_batch(indoc! {"
+            ALTER TABLE config_data ADD fuzzy_search_enabled BOOLEAN DEFAULT 1;
+            "})?;
+
+            tx.commit()?;
+        }
     }
 
     Ok(())
@@ -247,7 +286,10 @@ pub fn get_config(db: &Connection) -> Result<PersistentConfig> {
         show_line_count,
         try_embed_lyrics,
         theme_mode,
-        lrclib_instance
+        lrclib_instance,
+        lyrics_type_preference,
+        duration_tolerance,
+        fuzzy_search_enabled
       FROM config_data
       LIMIT 1
     "})?;
@@ -259,6 +301,9 @@ pub fn get_config(db: &Connection) -> Result<PersistentConfig> {
             try_embed_lyrics: r.get("try_embed_lyrics")?,
             theme_mode: r.get("theme_mode")?,
             lrclib_instance: r.get("lrclib_instance")?,
+            lyrics_type_preference: r.get("lyrics_type_preference")?,
+            duration_tolerance: r.get("duration_tolerance")?,
+            fuzzy_search_enabled: r.get("fuzzy_search_enabled")?,
         })
     })?;
     Ok(row)
@@ -271,6 +316,9 @@ pub fn set_config(
     try_embed_lyrics: bool,
     theme_mode: &str,
     lrclib_instance: &str,
+    lyrics_type_preference: &str,
+    duration_tolerance: f64,
+    fuzzy_search_enabled: bool,
     db: &Connection,
 ) -> Result<()> {
     let mut statement = db.prepare(indoc! {"
@@ -281,7 +329,10 @@ pub fn set_config(
         show_line_count = ?,
         try_embed_lyrics = ?,
         theme_mode = ?,
-        lrclib_instance = ?
+        lrclib_instance = ?,
+        lyrics_type_preference = ?,
+        duration_tolerance = ?,
+        fuzzy_search_enabled = ?
       WHERE 1
     "})?;
     statement.execute((
@@ -291,8 +342,45 @@ pub fn set_config(
         try_embed_lyrics,
         theme_mode,
         lrclib_instance,
+        lyrics_type_preference,
+        duration_tolerance,
+        fuzzy_search_enabled,
     ))?;
     Ok(())
+}
+
+fn get_order_clause(sort_by: &str, sort_order: &str) -> String {
+    let column = match sort_by {
+        "title" => "title_lower",
+        "duration" => "duration",
+        "track_number" => "track_number",
+        "lyrics_status" => "CASE WHEN lrc_lyrics IS NOT NULL AND lrc_lyrics != '[au: instrumental]' THEN 0 WHEN txt_lyrics IS NOT NULL THEN 1 WHEN instrumental = 1 THEN 2 ELSE 3 END",
+        _ => "title_lower",
+    };
+    let direction = if sort_order == "desc" { "DESC" } else { "ASC" };
+    format!("ORDER BY {} {}", column, direction)
+}
+
+pub fn get_library_stats(db: &Connection) -> Result<LibraryStats> {
+    let mut statement = db.prepare(indoc! {"
+      SELECT
+        COUNT(*) as total,
+        SUM(CASE WHEN instrumental = 1 THEN 1 ELSE 0 END) as instrumental,
+        SUM(CASE WHEN lrc_lyrics IS NOT NULL AND lrc_lyrics != '[au: instrumental]' THEN 1 ELSE 0 END) as synced,
+        SUM(CASE WHEN lrc_lyrics IS NULL AND txt_lyrics IS NOT NULL THEN 1 ELSE 0 END) as plain_only,
+        SUM(CASE WHEN lrc_lyrics IS NULL AND txt_lyrics IS NULL AND instrumental = 0 THEN 1 ELSE 0 END) as missing
+      FROM tracks
+    "})?;
+    let row = statement.query_row([], |r| {
+        Ok(LibraryStats {
+            total: r.get("total")?,
+            instrumental: r.get::<_, Option<i64>>("instrumental")?.unwrap_or(0),
+            synced: r.get::<_, Option<i64>>("synced")?.unwrap_or(0),
+            plain_only: r.get::<_, Option<i64>>("plain_only")?.unwrap_or(0),
+            missing: r.get::<_, Option<i64>>("missing")?.unwrap_or(0),
+        })
+    })?;
+    Ok(row)
 }
 
 pub fn find_artist(name: &str, db: &Connection) -> Result<i64> {
@@ -531,9 +619,11 @@ pub fn get_track_ids(
     plain_lyrics: bool,
     instrumental: bool,
     no_lyrics: bool,
+    sort_by: &str,
+    sort_order: &str,
     db: &Connection
 ) -> Result<Vec<i64>> {
-    let base_query = "SELECT id FROM tracks";
+    let base_query = "SELECT id, lrc_lyrics, txt_lyrics, instrumental FROM tracks";
 
     let mut conditions = Vec::new();
 
@@ -556,7 +646,8 @@ pub fn get_track_ids(
         String::new()
     };
 
-    let full_query = format!("{}{} ORDER BY title_lower ASC", base_query, where_clause);
+    let order = get_order_clause(sort_by, sort_order);
+    let full_query = format!("{}{} {}", base_query, where_clause, order);
 
     let mut statement = db.prepare(&full_query)?;
     let mut rows = statement.query([])?;
@@ -575,10 +666,12 @@ pub fn get_search_track_ids(
     plain_lyrics: bool,
     instrumental: bool,
     no_lyrics: bool,
+    sort_by: &str,
+    sort_order: &str,
     db: &Connection
 ) -> Result<Vec<i64>> {
     let base_query = indoc! {"
-      SELECT tracks.id
+      SELECT tracks.id, tracks.lrc_lyrics, tracks.txt_lyrics, tracks.instrumental
       FROM tracks
       JOIN artists ON tracks.artist_id = artists.id
       JOIN albums ON tracks.album_id = albums.id
@@ -608,7 +701,8 @@ pub fn get_search_track_ids(
         String::new()
     };
 
-    let full_query = format!("{}{} ORDER BY title_lower ASC", base_query, where_clause);
+    let order = get_order_clause(sort_by, sort_order);
+    let full_query = format!("{}{} {}", base_query, where_clause, order);
 
     let mut statement = db.prepare(&full_query)?;
     let formatted_query_str = format!("%{}%", prepare_input(query_str));
@@ -808,9 +902,9 @@ pub fn get_album_tracks(album_id: i64, db: &Connection) -> Result<Vec<Persistent
     Ok(tracks)
 }
 
-pub fn get_album_track_ids(album_id: i64, without_plain_lyrics: bool, without_synced_lyrics: bool, db: &Connection) -> Result<Vec<i64>> {
+pub fn get_album_track_ids(album_id: i64, without_plain_lyrics: bool, without_synced_lyrics: bool, sort_by: &str, sort_order: &str, db: &Connection) -> Result<Vec<i64>> {
     let base_query = indoc! {"
-      SELECT tracks.id
+      SELECT tracks.id, tracks.lrc_lyrics, tracks.txt_lyrics, tracks.instrumental
       FROM tracks
       JOIN albums ON tracks.album_id = albums.id
       WHERE tracks.album_id = ?"};
@@ -822,8 +916,9 @@ pub fn get_album_track_ids(album_id: i64, without_plain_lyrics: bool, without_sy
         (false, false) => "",
     };
 
-    let full_query = format!("{}{} ORDER BY tracks.track_number ASC",
-        base_query, lyrics_conditions);
+    let order = get_order_clause(sort_by, sort_order);
+    let full_query = format!("{}{} {}",
+        base_query, lyrics_conditions, order);
 
     let mut statement = db.prepare(&full_query)?;
     let mut rows = statement.query([album_id])?;
@@ -877,9 +972,9 @@ pub fn get_artist_tracks(artist_id: i64, db: &Connection) -> Result<Vec<Persiste
     Ok(tracks)
 }
 
-pub fn get_artist_track_ids(artist_id: i64, without_plain_lyrics: bool, without_synced_lyrics: bool, db: &Connection) -> Result<Vec<i64>> {
+pub fn get_artist_track_ids(artist_id: i64, without_plain_lyrics: bool, without_synced_lyrics: bool, sort_by: &str, sort_order: &str, db: &Connection) -> Result<Vec<i64>> {
     let base_query = indoc! {"
-      SELECT tracks.id
+      SELECT tracks.id, tracks.lrc_lyrics, tracks.txt_lyrics, tracks.instrumental
       FROM tracks
       JOIN albums ON tracks.album_id = albums.id
       JOIN artists ON tracks.artist_id = artists.id
@@ -892,8 +987,9 @@ pub fn get_artist_track_ids(artist_id: i64, without_plain_lyrics: bool, without_
         (false, false) => "",
     };
 
-    let full_query = format!("{}{} ORDER BY albums.name_lower ASC, tracks.track_number ASC",
-        base_query, lyrics_conditions);
+    let order = get_order_clause(sort_by, sort_order);
+    let full_query = format!("{}{} {}",
+        base_query, lyrics_conditions, order);
 
     let mut statement = db.prepare(&full_query)?;
     let mut rows = statement.query([artist_id])?;

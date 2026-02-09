@@ -1,5 +1,6 @@
-use crate::lrclib::get::request;
-use crate::lrclib::get::Response;
+use crate::lrclib::get::{request, Response};
+use crate::utils::strip_timestamp;
+use crate::lrclib::search;
 use crate::persistent_entities::PersistentTrack;
 use anyhow::Result;
 use lofty::{
@@ -14,6 +15,7 @@ use lofty::{
     TextEncoding,
 };
 use lrc::Lyrics;
+use std::collections::HashSet;
 use std::fs::{remove_file, write, OpenOptions};
 use std::io::Seek;
 use std::path::Path;
@@ -26,11 +28,23 @@ pub enum GetLyricsError {
     NotFound,
 }
 
+#[derive(Clone, Debug, PartialEq)]
+pub enum MatchSource {
+    Exact,
+    DurationFallback,
+    FuzzyFallback,
+    None,
+}
+
+const MIN_TITLE_SIMILARITY: f64 = 0.3;
+
 pub async fn download_lyrics_for_track(
     track: PersistentTrack,
     is_try_embed_lyrics: bool,
     lrclib_instance: &str,
-) -> Result<Response> {
+    duration_tolerance: f64,
+    fuzzy_search_enabled: bool,
+) -> Result<(Response, MatchSource)> {
     let lyrics = request(
         &track.title,
         &track.album_name,
@@ -40,7 +54,185 @@ pub async fn download_lyrics_for_track(
     )
     .await?;
 
-    apply_lyrics_for_track(track, lyrics, is_try_embed_lyrics).await
+    // If exact match found, use it
+    if !matches!(lyrics, Response::None) {
+        let response = apply_lyrics_for_track(track, lyrics, is_try_embed_lyrics).await?;
+        return Ok((response, MatchSource::Exact));
+    }
+
+    // Skip fallback searches if tolerance is 0
+    if duration_tolerance <= 0.0 {
+        let response = apply_lyrics_for_track(track, Response::None, is_try_embed_lyrics).await?;
+        return Ok((response, MatchSource::None));
+    }
+
+    // Fallback 1: field-based search with duration tolerance
+    let fallback = search_with_duration_tolerance(
+        &track.title,
+        &track.album_name,
+        &track.artist_name,
+        track.duration,
+        duration_tolerance,
+        lrclib_instance,
+    )
+    .await;
+
+    if let Ok(ref lyrics) = fallback {
+        if !matches!(lyrics, Response::None) {
+            let response = apply_lyrics_for_track(track, fallback.unwrap(), is_try_embed_lyrics).await?;
+            return Ok((response, MatchSource::DurationFallback));
+        }
+    }
+
+    if !fuzzy_search_enabled {
+        let response = apply_lyrics_for_track(track, Response::None, is_try_embed_lyrics).await?;
+        return Ok((response, MatchSource::None));
+    }
+
+    // Fallback 2: fuzzy q-based search with text similarity validation
+    let fuzzy = search_fuzzy_fallback(
+        &track.title,
+        &track.artist_name,
+        track.duration,
+        duration_tolerance,
+        lrclib_instance,
+    )
+    .await;
+
+    match fuzzy {
+        Ok(lyrics) => {
+            let source = if matches!(lyrics, Response::None) {
+                MatchSource::None
+            } else {
+                MatchSource::FuzzyFallback
+            };
+            let response = apply_lyrics_for_track(track, lyrics, is_try_embed_lyrics).await?;
+            Ok((response, source))
+        }
+        Err(_) => {
+            let response = apply_lyrics_for_track(track, Response::None, is_try_embed_lyrics).await?;
+            Ok((response, MatchSource::None))
+        }
+    }
+}
+
+fn normalize_text(s: &str) -> String {
+    s.to_lowercase()
+        .chars()
+        .filter(|c| c.is_alphanumeric() || c.is_whitespace())
+        .collect::<String>()
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+fn text_similarity(a: &str, b: &str) -> f64 {
+    let a_norm = normalize_text(a);
+    let b_norm = normalize_text(b);
+
+    if a_norm.is_empty() && b_norm.is_empty() {
+        return 1.0;
+    }
+    if a_norm.is_empty() || b_norm.is_empty() {
+        return 0.0;
+    }
+
+    let a_words: HashSet<&str> = a_norm.split_whitespace().collect();
+    let b_words: HashSet<&str> = b_norm.split_whitespace().collect();
+
+    let intersection = a_words.intersection(&b_words).count();
+    let union = a_words.union(&b_words).count();
+
+    if union == 0 { 0.0 } else { intersection as f64 / union as f64 }
+}
+
+fn search_item_to_response(item: search::SearchItem) -> Response {
+    match item.synced_lyrics {
+        Some(synced) => {
+            let plain = item.plain_lyrics.unwrap_or_else(|| strip_timestamp(&synced));
+            Response::SyncedLyrics(synced, plain)
+        }
+        None => match item.plain_lyrics {
+            Some(plain) => Response::UnsyncedLyrics(plain),
+            None => {
+                if item.instrumental {
+                    Response::IsInstrumental
+                } else {
+                    Response::None
+                }
+            }
+        },
+    }
+}
+
+fn pick_best_match(
+    results: impl IntoIterator<Item = search::SearchItem>,
+    duration: f64,
+    duration_tolerance: f64,
+) -> Option<search::SearchItem> {
+    results
+        .into_iter()
+        .filter(|item| {
+            item.duration
+                .map(|d| (d - duration).abs() <= duration_tolerance)
+                .unwrap_or(false)
+        })
+        .min_by(|a, b| {
+            let score = |item: &search::SearchItem| -> i32 {
+                if item.synced_lyrics.is_some() { 0 }
+                else if item.plain_lyrics.is_some() { 1 }
+                else if item.instrumental { 2 }
+                else { 3 }
+            };
+            let score_cmp = score(a).cmp(&score(b));
+            if score_cmp != std::cmp::Ordering::Equal {
+                return score_cmp;
+            }
+            let da = a.duration.map(|d| (d - duration).abs()).unwrap_or(f64::MAX);
+            let db = b.duration.map(|d| (d - duration).abs()).unwrap_or(f64::MAX);
+            da.partial_cmp(&db).unwrap_or(std::cmp::Ordering::Equal)
+        })
+}
+
+async fn search_with_duration_tolerance(
+    title: &str,
+    album_name: &str,
+    artist_name: &str,
+    duration: f64,
+    duration_tolerance: f64,
+    lrclib_instance: &str,
+) -> Result<Response> {
+    let results = search::request(title, album_name, artist_name, "", lrclib_instance).await?;
+
+    match pick_best_match(results.0, duration, duration_tolerance) {
+        Some(item) => Ok(search_item_to_response(item)),
+        None => Ok(Response::None),
+    }
+}
+
+async fn search_fuzzy_fallback(
+    title: &str,
+    artist_name: &str,
+    duration: f64,
+    duration_tolerance: f64,
+    lrclib_instance: &str,
+) -> Result<Response> {
+    let q = format!("{} {}", title, artist_name);
+    let results = search::request("", "", "", &q, lrclib_instance).await?;
+
+    let candidates: Vec<_> = results.0.into_iter()
+        .filter(|item| {
+            let title_sim = item.name.as_deref()
+                .map(|n| text_similarity(title, n))
+                .unwrap_or(0.0);
+            title_sim >= MIN_TITLE_SIMILARITY
+        })
+        .collect();
+
+    match pick_best_match(candidates, duration, duration_tolerance) {
+        Some(item) => Ok(search_item_to_response(item)),
+        None => Ok(Response::None),
+    }
 }
 
 pub async fn apply_string_lyrics_for_track(

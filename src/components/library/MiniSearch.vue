@@ -21,6 +21,45 @@
       <VDropdown theme="lrcget-dropdown" placement="top-start">
         <button
           class="w-[1.5rem] h-[1.5rem] flex justify-center items-center text-brave-30 group-hover:text-brave-20 dark:text-brave-95 dark:hover:text-brave-90 rounded-full"
+          :class="{ 'bg-brave-80 dark:bg-brave-40': isSortActive }"
+        >
+          <SortAscending v-if="sortOrder === 'asc'" />
+          <SortDescending v-else />
+        </button>
+        <template #popper>
+          <div class="dropdown-container">
+            <label class="dropdown-item">
+              <RadioButton v-model="sortBy" name="sort-by" id="sort-title" value="title">
+                <span class="dropdown-label">Title</span>
+              </RadioButton>
+            </label>
+            <label class="dropdown-item">
+              <RadioButton v-model="sortBy" name="sort-by" id="sort-duration" value="duration">
+                <span class="dropdown-label">Duration</span>
+              </RadioButton>
+            </label>
+            <label class="dropdown-item">
+              <RadioButton v-model="sortBy" name="sort-by" id="sort-track-number" value="track_number">
+                <span class="dropdown-label">Track #</span>
+              </RadioButton>
+            </label>
+            <label class="dropdown-item">
+              <RadioButton v-model="sortBy" name="sort-by" id="sort-lyrics-status" value="lyrics_status">
+                <span class="dropdown-label">Lyrics status</span>
+              </RadioButton>
+            </label>
+            <div class="border-t border-brave-90 dark:border-brave-20 my-1" />
+            <button class="dropdown-item w-full" @click="toggleSortOrder">
+              <SortAscending v-if="sortOrder === 'asc'" class="text-brave-20 dark:text-brave-90 w-6 h-6" />
+              <SortDescending v-else class="text-brave-20 dark:text-brave-90 w-6 h-6" />
+              <span class="dropdown-label ml-1">{{ sortOrder === 'asc' ? 'Ascending' : 'Descending' }}</span>
+            </button>
+          </div>
+        </template>
+      </VDropdown>
+      <VDropdown theme="lrcget-dropdown" placement="top-start">
+        <button
+          class="w-[1.5rem] h-[1.5rem] flex justify-center items-center text-brave-30 group-hover:text-brave-20 dark:text-brave-95 dark:hover:text-brave-90 rounded-full"
           :class="{ 'bg-brave-80 dark:bg-brave-40': isFilters }"
         >
           <Filter />
@@ -73,17 +112,26 @@
 <script setup>
 import { ref, computed, watch, onMounted } from 'vue'
 import { useSearchLibrary } from '@/composables/search-library.js'
-import { Magnify, Close, Filter } from 'mdue'
+import { Magnify, Close, Filter, SortAscending, SortDescending } from 'mdue'
 import _debounce from 'lodash/debounce'
 import CheckboxButton from '@/components/common/CheckboxButton.vue'
+import RadioButton from '@/components/common/RadioButton.vue'
 
-const { setSearch, filters } = useSearchLibrary()
+const { setSearch, filters, sortBy, sortOrder } = useSearchLibrary()
 
 const searchInput = ref('')
 
 const isFilters = computed(() => {
   return Object.values(filters.value).some((value) => !value)
 })
+
+const isSortActive = computed(() => {
+  return sortBy.value !== 'title' || sortOrder.value !== 'asc'
+})
+
+const toggleSortOrder = () => {
+  sortOrder.value = sortOrder.value === 'asc' ? 'desc' : 'asc'
+}
 
 const debouncedSearch = _debounce(async () => {
   setSearch(searchInput.value, filters.value)

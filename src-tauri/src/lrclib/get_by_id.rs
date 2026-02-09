@@ -2,11 +2,12 @@ use anyhow::Result;
 
 pub use super::get::RawResponse;
 pub use super::get::Response;
-use super::{ResponseError, HTTP_CLIENT};
+use super::{ResponseError, get_with_retry};
 
 async fn make_request(id: i64, lrclib_instance: &str) -> Result<reqwest::Response> {
     let api_endpoint = format!("{}/api/get/{}", lrclib_instance.trim_end_matches('/'), id);
-    Ok(HTTP_CLIENT.get(&api_endpoint).send().await?)
+    let url = reqwest::Url::parse(&api_endpoint)?;
+    Ok(get_with_retry(url).await?)
 }
 
 pub async fn request_raw(id: i64, lrclib_instance: &str) -> Result<RawResponse> {

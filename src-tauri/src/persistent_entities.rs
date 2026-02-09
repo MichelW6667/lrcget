@@ -1,6 +1,15 @@
 use serde::Serialize;
 
 #[derive(Serialize)]
+pub struct LibraryStats {
+    pub total: i64,
+    pub instrumental: i64,
+    pub synced: i64,
+    pub plain_only: i64,
+    pub missing: i64,
+}
+
+#[derive(Serialize)]
 pub struct PersistentTrack {
     pub id: i64,
     pub file_path: String,
@@ -45,4 +54,7 @@ pub struct PersistentConfig {
     pub try_embed_lyrics: bool,
     pub theme_mode: String,
     pub lrclib_instance: String,
+    pub lyrics_type_preference: String,
+    pub duration_tolerance: f64,
+    pub fuzzy_search_enabled: bool,
 }

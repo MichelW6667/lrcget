@@ -78,11 +78,13 @@ import { ref, computed, watch, onMounted } from 'vue'
 import { invoke } from '@tauri-apps/api/core'
 import TrackItem from '../track-list/TrackItem.vue'
 import { useDownloader } from '@/composables/downloader.js'
+import { useSearchLibrary } from '@/composables/search-library.js'
 
 const props = defineProps(['album'])
 const emit = defineEmits(['back', 'playTrack', 'downloadLyrics'])
 
 const { addToQueue } = useDownloader()
+const { sortBy, sortOrder } = useSearchLibrary()
 
 const trackIds = ref([])
 const parentRef = ref(null)
@@ -115,12 +117,18 @@ const downloadAlbumLyrics = async () => {
   const downloadTrackIds = await invoke('get_album_track_ids', {
     albumId: props.album.id,
     withoutPlainLyrics: config.skip_tracks_with_plain_lyrics,
-    withoutSyncedLyrics: config.skip_tracks_with_synced_lyrics
+    withoutSyncedLyrics: config.skip_tracks_with_synced_lyrics,
+    sortBy: sortBy.value,
+    sortOrder: sortOrder.value,
   })
   addToQueue(downloadTrackIds)
 }
 
 onMounted(async () => {
-  trackIds.value = await invoke('get_album_track_ids', { albumId: props.album.id })
+  trackIds.value = await invoke('get_album_track_ids', {
+    albumId: props.album.id,
+    sortBy: sortBy.value,
+    sortOrder: sortOrder.value,
+  })
 })
 </script>

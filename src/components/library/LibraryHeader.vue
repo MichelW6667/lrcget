@@ -1,7 +1,8 @@
 <template>
   <div class="px-4 py-2 h-12 flex justify-between gap-4 flex-none items-stretch">
-    <div class="flex-1 ml-2">
+    <div class="flex-1 ml-2 flex items-center gap-3">
       <MiniSearch v-if="props.activeTab === 'tracks'" />
+      <LibraryStats />
     </div>
 
     <div class="flex-1 flex gap-4 justify-center items-center text-sm">
@@ -102,15 +103,18 @@
 
 <script setup>
 import { ref } from 'vue'
+import { useSearchLibrary } from '@/composables/search-library.js'
 import { DownloadMultiple, Loading, Check, Cog, Information, DotsVertical, Refresh, FolderMultiple } from 'mdue'
 import { useDownloader } from '@/composables/downloader.js'
 import MiniSearch from './MiniSearch.vue'
+import LibraryStats from './LibraryStats.vue'
 import { invoke } from '@tauri-apps/api/core'
 
 const props = defineProps(['activeTab'])
 defineEmits(['changeActiveTab', 'showConfig', 'showAbout', 'showDownloadViewer', 'refreshLibrary', 'uninitializeLibrary'])
 
 const { isDownloading, totalCount, downloadedCount, addToQueue } = useDownloader()
+const { sortBy, sortOrder } = useSearchLibrary()
 
 const isBuildingQueue = ref(false)
 
@@ -125,6 +129,8 @@ const downloadAllLyrics = async () => {
       plainLyricsTracks: !config.skip_tracks_with_plain_lyrics,
       instrumentalTracks: !config.skip_tracks_with_synced_lyrics && !config.skip_tracks_with_plain_lyrics, // Treat instrumental tracks as either synced or plain lyrics tracks
       noLyricsTracks: true,
+      sortBy: sortBy.value,
+      sortOrder: sortOrder.value,
     })
     addToQueue(downloadTrackIds)
   } catch (error) {

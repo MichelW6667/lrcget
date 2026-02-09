@@ -11,7 +11,9 @@
       </div>
       <div class="text-[0.7rem] text-brave-30/60 dark:text-brave-95/60 flex gap-3">
         <span>{{ successCount }} FOUND</span>
-        <span>{{ failureCount }} NOT FOUND</span>
+        <span class="text-yellow-700 dark:text-yellow-400">{{ skippedCount }} SKIPPED</span>
+        <span>{{ notFoundCount }} NOT FOUND</span>
+        <span class="text-red-800 dark:text-red-400">{{ failureCount }} FAILED</span>
       </div>
     </div>
 
@@ -19,7 +21,12 @@
       <div
         v-for="logItem in log"
         :key="logItem.title + logItem.artistName"
-        :class="{ 'text-green-800 dark:text-green-400': logItem.status === 'success', 'text-red-800 dark:text-red-400': logItem.status === 'failure' }"
+        :class="{
+          'text-green-800 dark:text-green-400': logItem.status === 'success',
+          'text-yellow-700 dark:text-yellow-400': logItem.status === 'skipped',
+          'text-brave-50 dark:text-brave-60': logItem.status === 'not_found',
+          'text-red-800 dark:text-red-400': logItem.status === 'failure',
+        }"
       >
         <strong>{{ logItem.title }} - {{ logItem.artistName }}</strong>:
         <span>{{ logItem.message }}</span>
@@ -27,7 +34,10 @@
     </div>
 
     <template #footer>
-      <div class="flex-none flex justify-center">
+      <div class="flex-none flex justify-center gap-2">
+        <button v-if="isFinished && failureCount > 0" class="button button-warning px-8 py-2 rounded-full" @click="handleRetry">
+          Retry {{ failureCount }} failed
+        </button>
         <button v-if="isFinished" class="button button-primary px-8 py-2 rounded-full" @click="checkAndClose">Finish</button>
         <button v-else class="button button-normal px-8 py-2 rounded-full" @click="handleStop">Stop</button>
       </div>
@@ -43,11 +53,14 @@ const {
   downloadQueue,
   downloadProgress,
   successCount,
+  skippedCount,
+  notFoundCount,
   failureCount,
   totalCount,
   downloadedCount,
   startOver,
   stopDownloading,
+  retryFailed,
   log
 } = useDownloader()
 
@@ -68,6 +81,10 @@ const progressWidth = computed(() => {
 const isFinished = computed(() => {
   return downloadedCount.value >= totalCount.value
 })
+
+const handleRetry = () => {
+  retryFailed()
+}
 
 const handleStop = () => {
   stopDownloading()

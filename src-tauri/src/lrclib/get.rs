@@ -2,7 +2,7 @@ use crate::utils::strip_timestamp;
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 
-use super::{ResponseError, HTTP_CLIENT};
+use super::{ResponseError, get_with_retry};
 
 #[derive(Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -69,7 +69,7 @@ async fn make_request(
 
     let api_endpoint = format!("{}/api/get", lrclib_instance.trim_end_matches('/'));
     let url = reqwest::Url::parse_with_params(&api_endpoint, &params)?;
-    Ok(HTTP_CLIENT.get(url).send().await?)
+    Ok(get_with_retry(url).await?)
 }
 
 pub async fn request_raw(

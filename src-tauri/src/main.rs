@@ -116,6 +116,7 @@ async fn main() {
             library_cmd::get_artist_tracks,
             library_cmd::get_album_track_ids,
             library_cmd::get_artist_track_ids,
+            library_cmd::get_library_stats,
             lyrics_cmd::download_lyrics,
             lyrics_cmd::apply_lyrics,
             lyrics_cmd::retrieve_lyrics,

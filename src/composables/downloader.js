@@ -8,7 +8,12 @@ const downloadedItems = ref([])
 const currentItem = ref(null)
 const log = ref([])
 const successCount = ref(0)
+const skippedCount = ref(0)
+const notFoundCount = ref(0)
 const failureCount = ref(0)
+const failedTrackIds = ref([])
+
+const NOT_FOUND_MESSAGE = 'This track does not exist in LRCLIB database'
 const isDownloading = ref(false)
 const totalCount = ref(0)
 
@@ -31,15 +36,26 @@ const downloadLyrics = async (track) => {
       return
     }
 
-    addLog({ status: 'success', title: track.title, artistName: track.artist_name, message: result })
-    successCount.value++
+    const isSkipped = result.startsWith('Skipped:')
+    addLog({ status: isSkipped ? 'skipped' : 'success', title: track.title, artistName: track.artist_name, message: result })
+    if (isSkipped) {
+      skippedCount.value++
+    } else {
+      successCount.value++
+    }
   } catch (error) {
     if (!isDownloading.value) {
       return
     }
 
-    addLog({ status: 'failure', title: track.title, artistName: track.artist_name, message: error })
-    failureCount.value++
+    const isNotFound = error === NOT_FOUND_MESSAGE
+    addLog({ status: isNotFound ? 'not_found' : 'failure', title: track.title, artistName: track.artist_name, message: error })
+    if (isNotFound) {
+      notFoundCount.value++
+    } else {
+      failureCount.value++
+      failedTrackIds.value.push(track.id)
+    }
   }
 
   downloadedItems.value.push(currentItem.value)
@@ -84,11 +100,21 @@ const addToQueue = (trackIds) => {
   console.log(`Added ${totalCount.value} tracks to download queue`)
 }
 
+const retryFailed = () => {
+  const ids = [...failedTrackIds.value]
+  failedTrackIds.value = []
+  failureCount.value = 0
+  addToQueue(ids)
+}
+
 const startOver = () => {
   downloadedItems.value = []
   log.value = []
   successCount.value = 0
+  skippedCount.value = 0
+  notFoundCount.value = 0
   failureCount.value = 0
+  failedTrackIds.value = []
   totalCount.value = 0
   isDownloading.value = false
 }
@@ -98,7 +124,10 @@ const stopDownloading = () => {
   downloadedItems.value = []
   log.value = []
   successCount.value = 0
+  skippedCount.value = 0
+  notFoundCount.value = 0
   failureCount.value = 0
+  failedTrackIds.value = []
   totalCount.value = 0
   isDownloading.value = false
 }
@@ -110,11 +139,15 @@ export function useDownloader() {
     downloadedItems,
     downloadProgress,
     successCount,
+    skippedCount,
+    notFoundCount,
     failureCount,
+    failedTrackIds,
     totalCount,
     downloadedCount,
     log,
     addToQueue,
+    retryFailed,
     startOver,
     stopDownloading,
     downloadNext,

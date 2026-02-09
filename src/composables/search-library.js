@@ -7,6 +7,8 @@ const filters = ref({
   instrumentalTracks: true,
   noLyricsTracks: true,
 })
+const sortBy = ref("title")
+const sortOrder = ref("asc")
 
 export function useSearchLibrary() {
   const setSearch = (text, newFilters) => {
@@ -18,5 +20,7 @@ export function useSearchLibrary() {
     searchValue,
     filters,
     setSearch,
+    sortBy,
+    sortOrder,
   }
 }

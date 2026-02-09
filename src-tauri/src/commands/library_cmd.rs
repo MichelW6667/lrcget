@@ -1,6 +1,6 @@
 use crate::db;
 use crate::library;
-use crate::persistent_entities::{PersistentAlbum, PersistentArtist, PersistentConfig, PersistentTrack};
+use crate::persistent_entities::{LibraryStats, PersistentAlbum, PersistentArtist, PersistentConfig, PersistentTrack};
 use crate::state::AppState;
 use tauri::{AppHandle, State};
 
@@ -56,6 +56,9 @@ pub async fn set_config(
     try_embed_lyrics: bool,
     theme_mode: &str,
     lrclib_instance: &str,
+    lyrics_type_preference: &str,
+    duration_tolerance: f64,
+    fuzzy_search_enabled: bool,
     app_state: State<'_, AppState>,
 ) -> Result<(), String> {
     let conn_guard = app_state.db.lock().map_err(|e| format!("Database lock error: {}", e))?;
@@ -67,6 +70,9 @@ pub async fn set_config(
         try_embed_lyrics,
         theme_mode,
         lrclib_instance,
+        lyrics_type_preference,
+        duration_tolerance,
+        fuzzy_search_enabled,
         conn,
     )
     .map_err(|err| err.to_string())?;
@@ -143,17 +149,23 @@ pub async fn get_track_ids(
     plain_lyrics_tracks: Option<bool>,
     instrumental_tracks: Option<bool>,
     no_lyrics_tracks: Option<bool>,
+    sort_by: Option<String>,
+    sort_order: Option<String>,
     app_state: State<'_, AppState>,
 ) -> Result<Vec<i64>, String> {
     let conn_guard = app_state.db.lock().map_err(|e| format!("Database lock error: {}", e))?;
     let conn = conn_guard.as_ref().ok_or("Database not initialized")?;
     let search_query = search_query.filter(|s| !s.is_empty());
+    let sort_by = sort_by.unwrap_or_else(|| "title".to_owned());
+    let sort_order = sort_order.unwrap_or_else(|| "asc".to_owned());
     let track_ids = library::get_track_ids(
         search_query,
         synced_lyrics_tracks.unwrap_or(true),
         plain_lyrics_tracks.unwrap_or(true),
         instrumental_tracks.unwrap_or(true),
         no_lyrics_tracks.unwrap_or(true),
+        &sort_by,
+        &sort_order,
         conn,
     )
     .map_err(|err| err.to_string())?;
@@ -262,11 +274,15 @@ pub async fn get_album_track_ids(
     album_id: i64,
     without_plain_lyrics: Option<bool>,
     without_synced_lyrics: Option<bool>,
+    sort_by: Option<String>,
+    sort_order: Option<String>,
     app_state: State<'_, AppState>,
 ) -> Result<Vec<i64>, String> {
     let conn_guard = app_state.db.lock().map_err(|e| format!("Database lock error: {}", e))?;
     let conn = conn_guard.as_ref().ok_or("Database not initialized")?;
-    let track_ids = library::get_album_track_ids(album_id, without_plain_lyrics.unwrap_or(false), without_synced_lyrics.unwrap_or(false), conn).map_err(|err| err.to_string())?;
+    let sort_by = sort_by.unwrap_or_else(|| "track_number".to_owned());
+    let sort_order = sort_order.unwrap_or_else(|| "asc".to_owned());
+    let track_ids = library::get_album_track_ids(album_id, without_plain_lyrics.unwrap_or(false), without_synced_lyrics.unwrap_or(false), &sort_by, &sort_order, conn).map_err(|err| err.to_string())?;
 
     Ok(track_ids)
 }
@@ -276,12 +292,25 @@ pub async fn get_artist_track_ids(
     artist_id: i64,
     without_plain_lyrics: Option<bool>,
     without_synced_lyrics: Option<bool>,
+    sort_by: Option<String>,
+    sort_order: Option<String>,
     app_state: State<'_, AppState>,
 ) -> Result<Vec<i64>, String> {
     let conn_guard = app_state.db.lock().map_err(|e| format!("Database lock error: {}", e))?;
     let conn = conn_guard.as_ref().ok_or("Database not initialized")?;
+    let sort_by = sort_by.unwrap_or_else(|| "title".to_owned());
+    let sort_order = sort_order.unwrap_or_else(|| "asc".to_owned());
     let track_ids =
-        library::get_artist_track_ids(artist_id, without_plain_lyrics.unwrap_or(false), without_synced_lyrics.unwrap_or(false), conn).map_err(|err| err.to_string())?;
+        library::get_artist_track_ids(artist_id, without_plain_lyrics.unwrap_or(false), without_synced_lyrics.unwrap_or(false), &sort_by, &sort_order, conn).map_err(|err| err.to_string())?;
 
     Ok(track_ids)
+}
+
+#[tauri::command]
+pub async fn get_library_stats(app_state: State<'_, AppState>) -> Result<LibraryStats, String> {
+    let conn_guard = app_state.db.lock().map_err(|e| format!("Database lock error: {}", e))?;
+    let conn = conn_guard.as_ref().ok_or("Database not initialized")?;
+    let stats = db::get_library_stats(conn).map_err(|err| err.to_string())?;
+
+    Ok(stats)
 }

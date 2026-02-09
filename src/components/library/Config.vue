@@ -44,6 +44,69 @@
         </div>
 
         <div class="flex flex-col mb-4">
+          <label class="block mb-2 child-label">Lyrics type preference</label>
+
+          <RadioButton
+              class="mb-1"
+              v-model="lyricsTypePreference"
+              name="lyrics-type-preference"
+              id="lyrics-type-both"
+              value="both"
+            >
+              Download synced and plain lyrics
+            </RadioButton>
+
+            <RadioButton
+              class="mb-1"
+              v-model="lyricsTypePreference"
+              name="lyrics-type-preference"
+              id="lyrics-type-synced"
+              value="synced_only"
+            >
+              Synced lyrics only (skip plain)
+            </RadioButton>
+
+            <RadioButton
+              class="mb-1"
+              v-model="lyricsTypePreference"
+              name="lyrics-type-preference"
+              id="lyrics-type-plain"
+              value="plain_only"
+            >
+              Plain lyrics only (strip timestamps from synced)
+            </RadioButton>
+        </div>
+
+        <div class="flex flex-col mb-4">
+          <label class="block mb-2 child-label">Duration tolerance for fallback search</label>
+          <div class="flex items-center gap-3">
+            <input
+              type="range"
+              min="0"
+              max="5"
+              step="0.5"
+              v-model.number="durationTolerance"
+              class="w-48"
+            />
+            <span class="text-sm text-brave-30 dark:text-brave-95 w-20">± {{ durationTolerance }}s</span>
+          </div>
+          <p class="text-xs text-brave-50 mt-1">When exact match fails, search for tracks within this duration window. Set to 0 to disable fallback.</p>
+        </div>
+
+        <div class="flex flex-col mb-4">
+          <CheckboxButton
+              v-model="fuzzySearchEnabled"
+              name="fuzzy-search-enabled"
+              id="fuzzy-search-enabled"
+            >
+              <div class="flex flex-col">
+                <span>Enable fuzzy text matching fallback</span>
+                <span class="text-xs text-brave-50">When duration-based search fails, try a broader search with fuzzy title matching</span>
+              </div>
+          </CheckboxButton>
+        </div>
+
+        <div class="flex flex-col mb-4">
           <label class="block mb-2 child-label">Search settings</label>
 
           <CheckboxButton
@@ -141,6 +204,9 @@ const showLineCount = ref(true)
 const tryEmbedLyrics = ref(false)
 const editingThemeMode = ref('auto')
 const editingLrclibInstance = ref('')
+const lyricsTypePreference = ref('both')
+const durationTolerance = ref(3.0)
+const fuzzySearchEnabled = ref(true)
 
 const save = async () => {
   await invoke('set_config', {
@@ -149,7 +215,10 @@ const save = async () => {
     showLineCount: showLineCount.value,
     tryEmbedLyrics: tryEmbedLyrics.value,
     themeMode: editingThemeMode.value,
-    lrclibInstance: editingLrclibInstance.value
+    lrclibInstance: editingLrclibInstance.value,
+    lyricsTypePreference: lyricsTypePreference.value,
+    durationTolerance: durationTolerance.value,
+    fuzzySearchEnabled: fuzzySearchEnabled.value
   })
   setThemeMode(editingThemeMode.value)
   setLrclibInstance(editingLrclibInstance.value)
@@ -185,6 +254,9 @@ const beforeOpenHandler = async () => {
   tryEmbedLyrics.value = config.try_embed_lyrics
   editingThemeMode.value = config.theme_mode
   editingLrclibInstance.value = config.lrclib_instance
+  lyricsTypePreference.value = config.lyrics_type_preference || 'both'
+  durationTolerance.value = config.duration_tolerance ?? 3.0
+  fuzzySearchEnabled.value = config.fuzzy_search_enabled ?? true
 }
 
 watch(downloadLyricsFor, (newVal) => {

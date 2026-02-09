@@ -62,7 +62,7 @@ const rowVirtualizer = useVirtualizer(
   }))
 )
 
-const { searchValue, filters } = useSearchLibrary()
+const { searchValue, filters, sortBy, sortOrder } = useSearchLibrary()
 
 const virtualRows = computed(() => rowVirtualizer.value.getVirtualItems())
 
@@ -87,6 +87,8 @@ const getTrackIds = async () => {
         plainLyricsTracks: filters.value.plainLyricsTracks,
         instrumentalTracks: filters.value.instrumentalTracks,
         noLyricsTracks: filters.value.noLyricsTracks,
+        sortBy: sortBy.value,
+        sortOrder: sortOrder.value,
       }
     )
   } catch (error) {
@@ -121,4 +123,12 @@ watch(filters, async () => {
     console.error(error)
   }
 }, { deep: true })
+
+watch([sortBy, sortOrder], async () => {
+  try {
+    await getTrackIds()
+  } catch (error) {
+    console.error(error)
+  }
+})
 </script>

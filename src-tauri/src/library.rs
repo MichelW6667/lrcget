@@ -50,11 +50,13 @@ pub fn get_track_ids(
     plain_lyrics: bool,
     instrumental: bool,
     no_lyrics: bool,
+    sort_by: &str,
+    sort_order: &str,
     conn: &Connection
 ) -> Result<Vec<i64>> {
     match search_query {
-        Some(query) => db::get_search_track_ids(&query, synced_lyrics, plain_lyrics, instrumental, no_lyrics, conn),
-        None => db::get_track_ids(synced_lyrics, plain_lyrics, instrumental, no_lyrics, conn),
+        Some(query) => db::get_search_track_ids(&query, synced_lyrics, plain_lyrics, instrumental, no_lyrics, sort_by, sort_order, conn),
+        None => db::get_track_ids(synced_lyrics, plain_lyrics, instrumental, no_lyrics, sort_by, sort_order, conn),
     }
 }
 
@@ -94,12 +96,12 @@ pub fn get_artist_tracks(artist_id: i64, conn: &Connection) -> Result<Vec<Persis
     db::get_artist_tracks(artist_id, conn)
 }
 
-pub fn get_album_track_ids(album_id: i64, without_plain_lyrics: bool, without_synced_lyrics: bool, conn: &Connection) -> Result<Vec<i64>> {
-    db::get_album_track_ids(album_id, without_plain_lyrics, without_synced_lyrics, conn)
+pub fn get_album_track_ids(album_id: i64, without_plain_lyrics: bool, without_synced_lyrics: bool, sort_by: &str, sort_order: &str, conn: &Connection) -> Result<Vec<i64>> {
+    db::get_album_track_ids(album_id, without_plain_lyrics, without_synced_lyrics, sort_by, sort_order, conn)
 }
 
-pub fn get_artist_track_ids(artist_id: i64, without_plain_lyrics: bool, without_synced_lyrics: bool, conn: &Connection) -> Result<Vec<i64>> {
-    db::get_artist_track_ids(artist_id, without_plain_lyrics, without_synced_lyrics, conn)
+pub fn get_artist_track_ids(artist_id: i64, without_plain_lyrics: bool, without_synced_lyrics: bool, sort_by: &str, sort_order: &str, conn: &Connection) -> Result<Vec<i64>> {
+    db::get_artist_track_ids(artist_id, without_plain_lyrics, without_synced_lyrics, sort_by, sort_order, conn)
 }
 
 pub fn get_init(conn: &Connection) -> Result<bool> {

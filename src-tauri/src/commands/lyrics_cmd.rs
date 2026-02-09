@@ -2,7 +2,7 @@ use crate::db;
 use crate::lrclib;
 use crate::lyrics;
 use crate::state::ServiceAccess;
-use crate::utils::RE_INSTRUMENTAL;
+use crate::utils::{strip_timestamp, RE_INSTRUMENTAL};
 use rusqlite::Connection;
 use serde::Serialize;
 use tauri::{AppHandle, Emitter};
@@ -39,36 +39,60 @@ pub async fn download_lyrics(track_id: i64, app_handle: AppHandle) -> Result<Str
     let config = app_handle
         .db(|db| db::get_config(db))
         .map_err(|err| err.to_string())?;
-    let lyrics =
-        lyrics::download_lyrics_for_track(track, config.try_embed_lyrics, &config.lrclib_instance)
+    let (lyrics, match_source) =
+        lyrics::download_lyrics_for_track(track, config.try_embed_lyrics, &config.lrclib_instance, config.duration_tolerance, config.fuzzy_search_enabled)
             .await
             .map_err(|err| err.to_string())?;
+
+    let via = match match_source {
+        lyrics::MatchSource::Exact => "",
+        lyrics::MatchSource::DurationFallback => " (via duration fallback)",
+        lyrics::MatchSource::FuzzyFallback => " (via fuzzy search)",
+        lyrics::MatchSource::None => "",
+    };
+
+    let lyrics_pref = &config.lyrics_type_preference;
     match lyrics {
         lrclib::get::Response::SyncedLyrics(synced_lyrics, plain_lyrics) => {
-            app_handle
-                .db(|db: &Connection| {
-                    db::update_track_synced_lyrics(track_id, &synced_lyrics, &plain_lyrics, db)
-                })
-                .map_err(|err| err.to_string())?;
-            let _ = app_handle.emit("reload-track-id", track_id);
-            Ok("Synced lyrics downloaded".to_owned())
+            if lyrics_pref == "plain_only" {
+                // User wants plain only: strip timestamps and save as plain
+                let stripped = strip_timestamp(&synced_lyrics);
+                if has_plain {
+                    return Ok("Skipped: already has plain lyrics".to_owned());
+                }
+                app_handle
+                    .db(|db: &Connection| db::update_track_plain_lyrics(track_id, &stripped, db))
+                    .map_err(|err| err.to_string())?;
+                let _ = app_handle.emit("reload-track-id", track_id);
+                Ok(format!("Plain lyrics saved (stripped from synced){}", via))
+            } else {
+                app_handle
+                    .db(|db: &Connection| {
+                        db::update_track_synced_lyrics(track_id, &synced_lyrics, &plain_lyrics, db)
+                    })
+                    .map_err(|err| err.to_string())?;
+                let _ = app_handle.emit("reload-track-id", track_id);
+                Ok(format!("Synced lyrics downloaded{}", via))
+            }
         }
         lrclib::get::Response::UnsyncedLyrics(plain_lyrics) => {
+            if lyrics_pref == "synced_only" {
+                return Ok("Skipped: only plain lyrics available, synced preferred".to_owned());
+            }
             if has_plain {
-                // Skip: track already has plain lyrics and no synced upgrade is available
                 return Ok("Skipped: already has plain lyrics, no synced available".to_owned());
             }
             app_handle
                 .db(|db: &Connection| db::update_track_plain_lyrics(track_id, &plain_lyrics, db))
                 .map_err(|err| err.to_string())?;
             let _ = app_handle.emit("reload-track-id", track_id);
-            Ok("Plain lyrics downloaded".to_owned())
+            Ok(format!("Plain lyrics downloaded{}", via))
         }
         lrclib::get::Response::IsInstrumental => {
             app_handle
                 .db(|db: &Connection| db::update_track_instrumental(track_id, db))
                 .map_err(|err| err.to_string())?;
-            Ok("Marked track as instrumental".to_owned())
+            Ok(format!("Marked track as instrumental{}", via))
         }
         lrclib::get::Response::None => Err(lyrics::GetLyricsError::NotFound.to_string()),
     }
