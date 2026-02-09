@@ -48,7 +48,7 @@ import { humanDuration } from '@/utils/human-duration'
 
 const { isHotkey } = useGlobalState()
 const { playingTrack, status, duration, progress, volume, playTrack, pause, resume, seek, setVolume: setPlayerVolume } = usePlayer()
-const keydownEvent = ref(null)
+const keydownHandler = ref(null)
 
 const instrumental = computed(() => {
   if (!playingTrack.value) {
@@ -97,14 +97,14 @@ const lyricsClicked = (line) => {
   seek(line.timestamp)
 }
 
-onUnmounted(async () => {
-  if (keydownEvent.value) {
-    document.removeEventListener(keydownEvent.value)
+onUnmounted(() => {
+  if (keydownHandler.value) {
+    document.removeEventListener('keydown', keydownHandler.value)
   }
 })
 
-onMounted(async () => {
-  keydownEvent.value = document.addEventListener('keydown', (event) => {
+onMounted(() => {
+  keydownHandler.value = (event) => {
     if (!isHotkey.value) {
       // hotkey is explicitly disabled
       return
@@ -140,6 +140,7 @@ onMounted(async () => {
       default:
         break;
     }
-  })
+  }
+  document.addEventListener('keydown', keydownHandler.value)
 })
 </script>

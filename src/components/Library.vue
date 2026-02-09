@@ -69,6 +69,7 @@ const isLoading = ref(true)
 const isInitializing = ref(false)
 const initializeProgress = ref(null)
 const activeTab = ref('tracks')
+const unlistenFns = ref([])
 
 const { open: openAboutModal, close: closeAboutModal } = useModal({
   component: About,
@@ -112,9 +113,10 @@ const refreshLibrary = async () => {
   isInitializing.value = true
 
   try {
-    listen('initialize-progress', async (event) => {
+    const unlisten = await listen('initialize-progress', async (event) => {
       initializeProgress.value = event.payload
     })
+    unlistenFns.value.push(unlisten)
     await invoke('refresh_library')
     isInitializing.value = false
   } catch (error) {
@@ -133,9 +135,10 @@ onMounted(async () => {
     isInitializing.value = true
 
     try {
-      listen('initialize-progress', async (event) => {
+      const unlisten = await listen('initialize-progress', async (event) => {
         initializeProgress.value = event.payload
       })
+      unlistenFns.value.push(unlisten)
       await invoke('initialize_library')
       isInitializing.value = false
     } catch (error) {
@@ -151,6 +154,6 @@ onMounted(async () => {
 })
 
 onUnmounted(() => {
-  stop()
+  unlistenFns.value.forEach(fn => fn())
 })
 </script>

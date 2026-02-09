@@ -55,7 +55,7 @@
 
 <script setup>
 import { invoke } from '@tauri-apps/api/core'
-import { ref, onMounted, watch } from 'vue'
+import { ref, onMounted, onUnmounted, watch } from 'vue'
 import { Loading } from 'mdue'
 import { listen } from '@tauri-apps/api/event'
 import { useToast } from 'vue-toastification'
@@ -67,6 +67,7 @@ const props = defineProps(['track'])
 const isFlagging = ref(false)
 const isError = ref(false)
 const flagReason = ref('')
+const unlistenProgress = ref(null)
 
 const progress = ref({
   requestChallenge: 'Pending',
@@ -90,9 +91,15 @@ const flagLyrics = async () => {
   }
 }
 
-onMounted(() => {
-  listen('flag-lyrics-progress', (event) => {
+onMounted(async () => {
+  unlistenProgress.value = await listen('flag-lyrics-progress', (event) => {
     progress.value = event.payload
   })
+})
+
+onUnmounted(() => {
+  if (unlistenProgress.value) {
+    unlistenProgress.value()
+  }
 })
 </script>

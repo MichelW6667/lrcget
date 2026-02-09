@@ -83,7 +83,7 @@
 
 <script setup>
 import { invoke } from '@tauri-apps/api/core'
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, onUnmounted } from 'vue'
 import { Loading } from 'mdue'
 import { listen } from '@tauri-apps/api/event'
 import { useToast } from 'vue-toastification'
@@ -120,6 +120,7 @@ const props = defineProps({
 
 const isPublishing = ref(false)
 const isError = ref(false)
+const unlistenProgress = ref(null)
 const progress = ref({
   requestChallenge: 'Pending',
   solveChallenge: 'Pending',
@@ -150,10 +151,16 @@ const publishPlainText = async () => {
   }
 }
 
-onMounted(() => {
-  listen('publish-lyrics-progress', (event) => {
+onMounted(async () => {
+  unlistenProgress.value = await listen('publish-lyrics-progress', (event) => {
     progress.value = event.payload
   })
+})
+
+onUnmounted(() => {
+  if (unlistenProgress.value) {
+    unlistenProgress.value()
+  }
 })
 
 const close = () => {

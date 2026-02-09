@@ -29,7 +29,6 @@ pub struct Notify {
 pub struct AppState {
     pub db: std::sync::Mutex<Option<Connection>>,
     pub player: std::sync::Mutex<Option<Player>>,
-    pub queued_notifications: std::sync::Mutex<Vec<Notify>>,
 }
 
 pub trait ServiceAccess {
@@ -48,8 +47,10 @@ impl ServiceAccess for AppHandle {
         F: FnOnce(&Connection) -> TResult,
     {
         let app_state: State<AppState> = self.state();
-        let db_connection_guard = app_state.db.lock().unwrap();
-        let db = db_connection_guard.as_ref().unwrap();
+        let db_connection_guard = app_state.db.lock()
+            .expect("Database mutex poisoned");
+        let db = db_connection_guard.as_ref()
+            .expect("Database not initialized");
 
         operation(db)
     }
@@ -59,8 +60,10 @@ impl ServiceAccess for AppHandle {
         F: FnOnce(&mut Connection) -> TResult,
     {
         let app_state: State<AppState> = self.state();
-        let mut db_connection_guard = app_state.db.lock().unwrap();
-        let db = db_connection_guard.as_mut().unwrap();
+        let mut db_connection_guard = app_state.db.lock()
+            .expect("Database mutex poisoned");
+        let db = db_connection_guard.as_mut()
+            .expect("Database not initialized");
 
         operation(db)
     }

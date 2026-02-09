@@ -129,7 +129,7 @@ const editingTrack = ref(props.editingTrack)
 const unifiedLyrics = ref('')
 const shouldLoadCodeMirror = ref(false)
 const view = shallowRef()
-const keydownEvent = ref(null)
+const keydownHandler = ref(null)
 const isDirty = ref(false)
 const lyricsLintResult = ref([])
 const plainTextLintResult = ref([])
@@ -370,17 +370,17 @@ const handlePublish = () => {
   }
 }
 
-onUnmounted(async () => {
+onUnmounted(() => {
   enableHotkey()
-  if (keydownEvent.value) {
-    document.removeEventListener(keydownEvent.value)
+  if (keydownHandler.value) {
+    document.removeEventListener('keydown', keydownHandler.value)
   }
 
   // stop monitoring the window size
   window.removeEventListener('resize', handleResize)
 })
 
-onMounted(async () => {
+onMounted(() => {
   disableHotkey()
   if (!editingTrack.value) {
     return
@@ -400,7 +400,7 @@ onMounted(async () => {
 
   runner.value = new Runner(parsed)
 
-  keydownEvent.value = document.addEventListener('keydown', (event) => {
+  keydownHandler.value = (event) => {
     if (event.altKey === true && event.key === 'ArrowLeft') {
       event.preventDefault()
       rewind100()
@@ -408,7 +408,8 @@ onMounted(async () => {
       event.preventDefault()
       fastForward100()
     }
-  })
+  }
+  document.addEventListener('keydown', keydownHandler.value)
 
   lyricsLintResult.value = executeLyricsLint(unifiedLyrics.value)
   plainTextLintResult.value = executePlainTextLint(unifiedLyrics.value)
