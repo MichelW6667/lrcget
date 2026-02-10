@@ -13,7 +13,6 @@ use rayon::prelude::*;
 use rusqlite::Connection;
 use serde::{Deserialize, Serialize};
 use std::path::Path;
-use std::path::PathBuf;
 use std::time::Instant;
 use tauri::{AppHandle, Emitter};
 use thiserror::Error;
@@ -139,8 +138,9 @@ impl FsTrack {
             file_path, file_name, title, album, artist, album_artist, duration, None, None,
             track_number, bitrate,
         );
-        track.txt_lyrics = track.get_txt_lyrics();
-        track.lrc_lyrics = track.get_lrc_lyrics();
+        let (txt, lrc) = track.read_sidecar_lyrics();
+        track.txt_lyrics = txt;
+        track.lrc_lyrics = lrc;
 
         Ok(track)
     }
@@ -199,48 +199,49 @@ impl FsTrack {
             track_number,
             bitrate,
         );
-        track.txt_lyrics = track.get_txt_lyrics();
-        track.lrc_lyrics = track.get_lrc_lyrics();
+        let (txt, lrc) = track.read_sidecar_lyrics();
+        track.txt_lyrics = txt;
+        track.lrc_lyrics = lrc;
 
         println!("Successfully loaded `{}` via id3 fallback", file_path);
 
         Ok(track)
     }
 
-    pub fn file_path(&self) -> String {
-        self.file_path.to_owned()
+    pub fn file_path(&self) -> &str {
+        &self.file_path
     }
 
-    pub fn file_name(&self) -> String {
-        self.file_name.to_owned()
+    pub fn file_name(&self) -> &str {
+        &self.file_name
     }
 
-    pub fn title(&self) -> String {
-        self.title.to_owned()
+    pub fn title(&self) -> &str {
+        &self.title
     }
 
-    pub fn album(&self) -> String {
-        self.album.to_owned()
+    pub fn album(&self) -> &str {
+        &self.album
     }
 
-    pub fn artist(&self) -> String {
-        self.artist.to_owned()
+    pub fn artist(&self) -> &str {
+        &self.artist
     }
 
-    pub fn album_artist(&self) -> String {
-        self.album_artist.to_owned()
+    pub fn album_artist(&self) -> &str {
+        &self.album_artist
     }
 
     pub fn duration(&self) -> f64 {
         self.duration
     }
 
-    pub fn txt_lyrics(&self) -> Option<String> {
-        self.txt_lyrics.to_owned()
+    pub fn txt_lyrics(&self) -> Option<&str> {
+        self.txt_lyrics.as_deref()
     }
 
-    pub fn lrc_lyrics(&self) -> Option<String> {
-        self.lrc_lyrics.to_owned()
+    pub fn lrc_lyrics(&self) -> Option<&str> {
+        self.lrc_lyrics.as_deref()
     }
 
     pub fn track_number(&self) -> Option<u32> {
@@ -251,60 +252,16 @@ impl FsTrack {
         self.bitrate
     }
 
-    fn get_txt_path(&self) -> String {
-        let path = PathBuf::from(self.file_path.to_owned());
-        let file_name = path.file_name().unwrap().to_str().unwrap().to_owned();
-        let parent_path = path.parent().unwrap();
-        let file_name_without_extension = std::path::Path::new(&file_name)
-            .file_stem()
-            .unwrap()
-            .to_str()
-            .unwrap()
-            .to_owned();
-        let mut txt_file_name = file_name_without_extension.to_owned();
-        txt_file_name.push_str(".txt");
+    /// Returns (txt_lyrics, lrc_lyrics) by parsing the path once
+    fn read_sidecar_lyrics(&self) -> (Option<String>, Option<String>) {
+        let path = Path::new(&self.file_path);
+        let stem = path.file_stem().and_then(|s| s.to_str()).unwrap_or("");
+        let parent = path.parent().unwrap_or(Path::new(""));
 
-        let txt_file_path = parent_path.join(txt_file_name).display().to_string();
+        let txt_lyrics = std::fs::read_to_string(parent.join(format!("{}.txt", stem))).ok();
+        let lrc_lyrics = std::fs::read_to_string(parent.join(format!("{}.lrc", stem))).ok();
 
-        txt_file_path
-    }
-
-    fn get_txt_lyrics(&self) -> Option<String> {
-        let txt_file_path = self.get_txt_path();
-        let txt_content = std::fs::read_to_string(txt_file_path);
-
-        match txt_content {
-            Ok(txt_content) => Some(txt_content),
-            Err(_) => None,
-        }
-    }
-
-    fn get_lrc_path(&self) -> String {
-        let path = PathBuf::from(self.file_path.to_owned());
-        let file_name = path.file_name().unwrap().to_str().unwrap().to_owned();
-        let parent_path = path.parent().unwrap();
-        let file_name_without_extension = std::path::Path::new(&file_name)
-            .file_stem()
-            .unwrap()
-            .to_str()
-            .unwrap()
-            .to_owned();
-        let mut lrc_file_name = file_name_without_extension.to_owned();
-        lrc_file_name.push_str(".lrc");
-
-        let lrc_file_path = parent_path.join(lrc_file_name).display().to_string();
-
-        lrc_file_path
-    }
-
-    fn get_lrc_lyrics(&self) -> Option<String> {
-        let lrc_file_path = self.get_lrc_path();
-        let lrc_content = std::fs::read_to_string(lrc_file_path);
-
-        match lrc_content {
-            Ok(lrc_content) => Some(lrc_content),
-            Err(_) => None,
-        }
+        (txt_lyrics, lrc_lyrics)
     }
 }
 
@@ -348,7 +305,7 @@ pub fn load_tracks_from_directories(
         for item in globwalker {
             let entry = item?;
             entry_batch.push(entry);
-            if entry_batch.len() == 100 {
+            if entry_batch.len() == 500 {
                 let tracks = load_tracks_from_entry_batch(&entry_batch)?;
 
                 db::add_tracks(&tracks, conn)?;

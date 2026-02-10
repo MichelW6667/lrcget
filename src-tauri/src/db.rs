@@ -541,8 +541,12 @@ pub fn update_track_instrumental(id: i64, db: &Connection) -> Result<PersistentT
 pub fn add_tracks(tracks: &Vec<fs_track::FsTrack>, db: &mut Connection) -> Result<()> {
     let tx = db.transaction()?;
 
+    // In-memory caches to avoid repeated SELECT queries for the same artist/album
+    let mut artist_cache: std::collections::HashMap<String, i64> = std::collections::HashMap::new();
+    let mut album_cache: std::collections::HashMap<(String, String), i64> = std::collections::HashMap::new();
+
     for track in tracks.iter() {
-        add_track(track, &tx)?;
+        add_track(track, &tx, &mut artist_cache, &mut album_cache)?;
     }
 
     tx.commit()?;
@@ -550,22 +554,38 @@ pub fn add_tracks(tracks: &Vec<fs_track::FsTrack>, db: &mut Connection) -> Resul
     Ok(())
 }
 
-pub fn add_track(track: &fs_track::FsTrack, db: &Connection) -> Result<()> {
-    let artist_result = find_artist(&track.artist(), db);
-    let artist_id = match artist_result {
-        Ok(artist_id) => artist_id,
-        Err(_) => add_artist(&track.artist(), db)?,
+fn add_track(
+    track: &fs_track::FsTrack,
+    db: &Connection,
+    artist_cache: &mut std::collections::HashMap<String, i64>,
+    album_cache: &mut std::collections::HashMap<(String, String), i64>,
+) -> Result<()> {
+    let artist_key = track.artist().to_owned();
+    let artist_id = if let Some(&id) = artist_cache.get(&artist_key) {
+        id
+    } else {
+        let id = match find_artist(track.artist(), db) {
+            Ok(id) => id,
+            Err(_) => add_artist(track.artist(), db)?,
+        };
+        artist_cache.insert(artist_key, id);
+        id
     };
 
-    let album_result = find_album(&track.album(), &track.album_artist(), db);
-    let album_id = match album_result {
-        Ok(album_id) => album_id,
-        Err(_) => add_album(&track.album(), &track.album_artist(), db)?,
+    let album_key = (track.album().to_owned(), track.album_artist().to_owned());
+    let album_id = if let Some(&id) = album_cache.get(&album_key) {
+        id
+    } else {
+        let id = match find_album(track.album(), track.album_artist(), db) {
+            Ok(id) => id,
+            Err(_) => add_album(track.album(), track.album_artist(), db)?,
+        };
+        album_cache.insert(album_key, id);
+        id
     };
 
     let is_instrumental = track
         .lrc_lyrics()
-        .as_ref()
         .map_or(false, |lyrics| RE_INSTRUMENTAL.is_match(lyrics));
 
     let query = indoc! {"
@@ -589,7 +609,7 @@ pub fn add_track(track: &fs_track::FsTrack, db: &Connection) -> Result<()> {
         track.file_path(),
         track.file_name(),
         track.title(),
-        prepare_input(&track.title()),
+        prepare_input(track.title()),
         album_id,
         artist_id,
         track.duration(),
