@@ -782,7 +782,7 @@ pub fn get_album_ids(search_query: Option<&str>, db: &Connection) -> Result<Vec<
         Some(query) => {
             let like_query = format!("%{}%", prepare_input(query));
             let mut statement = db.prepare(
-                "SELECT id FROM albums WHERE name_lower LIKE ?1 ORDER BY name_lower ASC"
+                "SELECT id FROM albums WHERE name_lower LIKE ?1 OR album_artist_name_lower LIKE ?1 ORDER BY name_lower ASC"
             )?;
             let mut rows = statement.query([&like_query])?;
             let mut ids: Vec<i64> = Vec::new();
