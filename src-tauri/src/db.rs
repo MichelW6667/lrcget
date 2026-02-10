@@ -777,15 +777,30 @@ pub fn get_album_by_id(id: i64, db: &Connection) -> Result<PersistentAlbum> {
     Ok(row)
 }
 
-pub fn get_album_ids(db: &Connection) -> Result<Vec<i64>> {
-    let mut statement = db.prepare("SELECT id FROM albums ORDER BY name_lower ASC")?;
-    let mut rows = statement.query([])?;
-    let mut album_ids: Vec<i64> = Vec::new();
-
-    while let Some(row) = rows.next()? {
-        album_ids.push(row.get("id")?);
-    }
-
+pub fn get_album_ids(search_query: Option<&str>, db: &Connection) -> Result<Vec<i64>> {
+    let album_ids = match search_query {
+        Some(query) => {
+            let like_query = format!("%{}%", prepare_input(query));
+            let mut statement = db.prepare(
+                "SELECT id FROM albums WHERE name_lower LIKE ?1 ORDER BY name_lower ASC"
+            )?;
+            let mut rows = statement.query([&like_query])?;
+            let mut ids: Vec<i64> = Vec::new();
+            while let Some(row) = rows.next()? {
+                ids.push(row.get("id")?);
+            }
+            ids
+        }
+        None => {
+            let mut statement = db.prepare("SELECT id FROM albums ORDER BY name_lower ASC")?;
+            let mut rows = statement.query([])?;
+            let mut ids: Vec<i64> = Vec::new();
+            while let Some(row) = rows.next()? {
+                ids.push(row.get("id")?);
+            }
+            ids
+        }
+    };
     Ok(album_ids)
 }
 
@@ -836,15 +851,30 @@ pub fn get_artist_by_id(id: i64, db: &Connection) -> Result<PersistentArtist> {
     Ok(row)
 }
 
-pub fn get_artist_ids(db: &Connection) -> Result<Vec<i64>> {
-    let mut statement = db.prepare("SELECT id FROM artists ORDER BY name_lower ASC")?;
-    let mut rows = statement.query([])?;
-    let mut artist_ids: Vec<i64> = Vec::new();
-
-    while let Some(row) = rows.next()? {
-        artist_ids.push(row.get("id")?);
-    }
-
+pub fn get_artist_ids(search_query: Option<&str>, db: &Connection) -> Result<Vec<i64>> {
+    let artist_ids = match search_query {
+        Some(query) => {
+            let like_query = format!("%{}%", prepare_input(query));
+            let mut statement = db.prepare(
+                "SELECT id FROM artists WHERE name_lower LIKE ?1 ORDER BY name_lower ASC"
+            )?;
+            let mut rows = statement.query([&like_query])?;
+            let mut ids: Vec<i64> = Vec::new();
+            while let Some(row) = rows.next()? {
+                ids.push(row.get("id")?);
+            }
+            ids
+        }
+        None => {
+            let mut statement = db.prepare("SELECT id FROM artists ORDER BY name_lower ASC")?;
+            let mut rows = statement.query([])?;
+            let mut ids: Vec<i64> = Vec::new();
+            while let Some(row) = rows.next()? {
+                ids.push(row.get("id")?);
+            }
+            ids
+        }
+    };
     Ok(artist_ids)
 }
 

@@ -1,7 +1,7 @@
 use anyhow::Result;
 use serde::Serialize;
 
-use super::{ResponseError, HTTP_CLIENT};
+use super::{post_with_retry, ResponseError, HTTP_CLIENT};
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -35,12 +35,13 @@ pub async fn request(
 
     let api_endpoint = format!("{}/api/publish", lrclib_instance.trim_end_matches('/'));
     let url = reqwest::Url::parse(&api_endpoint)?;
-    let res = HTTP_CLIENT
-        .post(url)
-        .header("X-Publish-Token", publish_token)
-        .json(&data)
-        .send()
-        .await?;
+    let res = post_with_retry(
+        HTTP_CLIENT
+            .post(url)
+            .header("X-Publish-Token", publish_token)
+            .json(&data),
+    )
+    .await?;
 
     match res.status() {
         reqwest::StatusCode::CREATED => Ok(()),

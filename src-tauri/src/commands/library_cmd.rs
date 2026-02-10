@@ -195,10 +195,11 @@ pub async fn get_albums(app_state: State<'_, AppState>) -> Result<Vec<Persistent
 }
 
 #[tauri::command]
-pub async fn get_album_ids(app_state: State<'_, AppState>) -> Result<Vec<i64>, String> {
+pub async fn get_album_ids(search_query: Option<String>, app_state: State<'_, AppState>) -> Result<Vec<i64>, String> {
     let conn_guard = app_state.db.lock().map_err(|e| format!("Database lock error: {}", e))?;
     let conn = conn_guard.as_ref().ok_or("Database not initialized")?;
-    let album_ids = library::get_album_ids(conn).map_err(|err| err.to_string())?;
+    let search_query = search_query.filter(|s| !s.is_empty());
+    let album_ids = library::get_album_ids(search_query.as_deref(), conn).map_err(|err| err.to_string())?;
 
     Ok(album_ids)
 }
@@ -225,10 +226,11 @@ pub async fn get_artists(app_state: State<'_, AppState>) -> Result<Vec<Persisten
 }
 
 #[tauri::command]
-pub async fn get_artist_ids(app_state: State<'_, AppState>) -> Result<Vec<i64>, String> {
+pub async fn get_artist_ids(search_query: Option<String>, app_state: State<'_, AppState>) -> Result<Vec<i64>, String> {
     let conn_guard = app_state.db.lock().map_err(|e| format!("Database lock error: {}", e))?;
     let conn = conn_guard.as_ref().ok_or("Database not initialized")?;
-    let artist_ids = library::get_artist_ids(conn).map_err(|err| err.to_string())?;
+    let search_query = search_query.filter(|s| !s.is_empty());
+    let artist_ids = library::get_artist_ids(search_query.as_deref(), conn).map_err(|err| err.to_string())?;
 
     Ok(artist_ids)
 }

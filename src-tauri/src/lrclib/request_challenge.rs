@@ -1,7 +1,7 @@
 use anyhow::Result;
 use serde::Deserialize;
 
-use super::{ResponseError, HTTP_CLIENT};
+use super::{post_with_retry, ResponseError, HTTP_CLIENT};
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -16,7 +16,7 @@ pub async fn request(lrclib_instance: &str) -> Result<Response> {
         lrclib_instance.trim_end_matches('/')
     );
     let url = reqwest::Url::parse(&api_endpoint)?;
-    let res = HTTP_CLIENT.post(url).send().await?;
+    let res = post_with_retry(HTTP_CLIENT.post(url)).await?;
 
     match res.status() {
         reqwest::StatusCode::OK => {

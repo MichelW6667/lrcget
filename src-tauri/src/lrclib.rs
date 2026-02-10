@@ -24,7 +24,7 @@ pub static HTTP_CLIENT: LazyLock<reqwest::Client> = LazyLock::new(|| {
         version
     );
     reqwest::Client::builder()
-        .timeout(Duration::from_secs(10))
+        .timeout(Duration::from_secs(30))
         .user_agent(user_agent)
         .build()
         .expect("Failed to create HTTP client")

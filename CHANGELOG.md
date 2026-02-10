@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.1.1] - 2026-02-09
+
+### Added
+- Search box for Albums and Artists views (with debounced filtering)
+- HTTP retry with exponential backoff for all API requests (GET and POST)
+- Increased HTTP timeout from 10s to 30s for publish/flag operations
+- Match source indicators in download log ("via duration fallback" / "via fuzzy search")
+
 ## [1.1.0] - 2026-02-09
 
 ### Added
