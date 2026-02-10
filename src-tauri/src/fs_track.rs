@@ -7,7 +7,6 @@ use lofty::error::LoftyError;
 use lofty::file::AudioFile;
 use lofty::file::TaggedFileExt;
 use lofty::probe::Probe;
-use lofty::read_from_path;
 use lofty::tag::Accessor;
 use rayon::prelude::*;
 use rusqlite::Connection;
@@ -87,7 +86,9 @@ impl FsTrack {
         let file_path = path.display().to_string();
         let file_name = path.file_name().unwrap().to_str().unwrap().to_owned();
 
-        match read_from_path(&file_path) {
+        // Skip cover art reading to save memory and I/O
+        let opts = ParseOptions::new().read_cover_art(false);
+        match Probe::open(&file_path).and_then(|p| p.options(opts).read()) {
             Ok(tagged_file) => {
                 Self::from_lofty_tagged_file(tagged_file, file_path, file_name, path)
             }
@@ -265,7 +266,7 @@ impl FsTrack {
     }
 }
 
-fn load_tracks_from_entry_batch(entry_batch: &Vec<DirEntry>) -> Result<Vec<FsTrack>> {
+fn load_tracks_from_entry_batch(entry_batch: &[DirEntry]) -> Result<Vec<FsTrack>> {
     let track_results: Vec<Result<FsTrack>> = entry_batch
         .par_iter()
         .map(|file| FsTrack::new_from_path(file.path()))
@@ -287,45 +288,32 @@ fn load_tracks_from_entry_batch(entry_batch: &Vec<DirEntry>) -> Result<Vec<FsTra
     Ok(tracks)
 }
 
+const GLOB_PATTERN: &str = "/**/*.{mp3,m4a,flac,ogg,opus,wav,MP3,M4A,FLAC,OGG,OPUS,WAV}";
+
 pub fn load_tracks_from_directories(
     directories: &Vec<String>,
     conn: &mut Connection,
     app_handle: AppHandle,
 ) -> Result<()> {
     let now = Instant::now();
-    let files_count = count_files_from_directories(directories)?;
+
+    // Single filesystem scan: collect all entries, then process in batches
+    let mut all_entries: Vec<DirEntry> = Vec::new();
+    for directory in directories.iter() {
+        let globwalker = glob(format!("{}{}", directory, GLOB_PATTERN))?;
+        for item in globwalker {
+            all_entries.push(item?);
+        }
+    }
+
+    let files_count = all_entries.len();
     println!("Files count: {}", files_count);
     let mut files_scanned: usize = 0;
-    for directory in directories.iter() {
-        let mut entry_batch: Vec<DirEntry> = vec![];
-        let globwalker = glob(format!(
-            "{}/**/*.{{mp3,m4a,flac,ogg,opus,wav,MP3,M4A,FLAC,OGG,OPUS,WAV}}",
-            directory
-        ))?;
-        for item in globwalker {
-            let entry = item?;
-            entry_batch.push(entry);
-            if entry_batch.len() == 500 {
-                let tracks = load_tracks_from_entry_batch(&entry_batch)?;
 
-                db::add_tracks(&tracks, conn)?;
-                files_scanned += entry_batch.len();
-                app_handle
-                    .emit(
-                        "initialize-progress",
-                        ScanProgress {
-                            progress: None,
-                            files_scanned,
-                            files_count: Some(files_count),
-                        },
-                    )
-                    .unwrap();
-                entry_batch.clear();
-            }
-        }
-        let tracks = load_tracks_from_entry_batch(&entry_batch)?;
+    for batch in all_entries.chunks(500) {
+        let tracks = load_tracks_from_entry_batch(batch)?;
         db::add_tracks(&tracks, conn)?;
-        files_scanned += entry_batch.len();
+        files_scanned += batch.len();
         app_handle
             .emit(
                 "initialize-progress",
@@ -337,20 +325,8 @@ pub fn load_tracks_from_directories(
             )
             .unwrap();
     }
+
     println!("==> Scanning tracks take: {}ms", now.elapsed().as_millis());
 
     Ok(())
-}
-
-pub fn count_files_from_directories(directories: &Vec<String>) -> Result<usize> {
-    let mut files_count = 0;
-    for directory in directories.iter() {
-        let files_in_dir = glob(format!(
-            "{}/**/*.{{mp3,m4a,flac,ogg,opus,wav,MP3,M4A,FLAC,OGG,OPUS,WAV}}",
-            directory
-        ))?;
-        files_count += files_in_dir.into_iter().count();
-    }
-
-    Ok(files_count)
 }

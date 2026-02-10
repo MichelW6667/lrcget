@@ -545,80 +545,61 @@ pub fn add_tracks(tracks: &Vec<fs_track::FsTrack>, db: &mut Connection) -> Resul
     let mut artist_cache: std::collections::HashMap<String, i64> = std::collections::HashMap::new();
     let mut album_cache: std::collections::HashMap<(String, String), i64> = std::collections::HashMap::new();
 
+    // Prepare statement once, reuse for all tracks in the batch
+    let mut insert_stmt = tx.prepare(indoc! {"
+        INSERT INTO tracks (
+            file_path, file_name, title, title_lower, album_id, artist_id,
+            duration, track_number, txt_lyrics, lrc_lyrics, instrumental, bitrate
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    "})?;
+
     for track in tracks.iter() {
-        add_track(track, &tx, &mut artist_cache, &mut album_cache)?;
+        let artist_key = track.artist().to_owned();
+        let artist_id = if let Some(&id) = artist_cache.get(&artist_key) {
+            id
+        } else {
+            let id = match find_artist(track.artist(), &tx) {
+                Ok(id) => id,
+                Err(_) => add_artist(track.artist(), &tx)?,
+            };
+            artist_cache.insert(artist_key, id);
+            id
+        };
+
+        let album_key = (track.album().to_owned(), track.album_artist().to_owned());
+        let album_id = if let Some(&id) = album_cache.get(&album_key) {
+            id
+        } else {
+            let id = match find_album(track.album(), track.album_artist(), &tx) {
+                Ok(id) => id,
+                Err(_) => add_album(track.album(), track.album_artist(), &tx)?,
+            };
+            album_cache.insert(album_key, id);
+            id
+        };
+
+        let is_instrumental = track
+            .lrc_lyrics()
+            .map_or(false, |lyrics| RE_INSTRUMENTAL.is_match(lyrics));
+
+        insert_stmt.execute((
+            track.file_path(),
+            track.file_name(),
+            track.title(),
+            prepare_input(track.title()),
+            album_id,
+            artist_id,
+            track.duration(),
+            track.track_number(),
+            track.txt_lyrics(),
+            track.lrc_lyrics(),
+            is_instrumental,
+            track.bitrate(),
+        ))?;
     }
 
+    drop(insert_stmt);
     tx.commit()?;
-
-    Ok(())
-}
-
-fn add_track(
-    track: &fs_track::FsTrack,
-    db: &Connection,
-    artist_cache: &mut std::collections::HashMap<String, i64>,
-    album_cache: &mut std::collections::HashMap<(String, String), i64>,
-) -> Result<()> {
-    let artist_key = track.artist().to_owned();
-    let artist_id = if let Some(&id) = artist_cache.get(&artist_key) {
-        id
-    } else {
-        let id = match find_artist(track.artist(), db) {
-            Ok(id) => id,
-            Err(_) => add_artist(track.artist(), db)?,
-        };
-        artist_cache.insert(artist_key, id);
-        id
-    };
-
-    let album_key = (track.album().to_owned(), track.album_artist().to_owned());
-    let album_id = if let Some(&id) = album_cache.get(&album_key) {
-        id
-    } else {
-        let id = match find_album(track.album(), track.album_artist(), db) {
-            Ok(id) => id,
-            Err(_) => add_album(track.album(), track.album_artist(), db)?,
-        };
-        album_cache.insert(album_key, id);
-        id
-    };
-
-    let is_instrumental = track
-        .lrc_lyrics()
-        .map_or(false, |lyrics| RE_INSTRUMENTAL.is_match(lyrics));
-
-    let query = indoc! {"
-    INSERT INTO tracks (
-        file_path,
-        file_name,
-        title,
-        title_lower,
-        album_id,
-        artist_id,
-        duration,
-        track_number,
-        txt_lyrics,
-        lrc_lyrics,
-        instrumental,
-        bitrate
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  "};
-    let mut statement = db.prepare(query)?;
-    statement.execute((
-        track.file_path(),
-        track.file_name(),
-        track.title(),
-        prepare_input(track.title()),
-        album_id,
-        artist_id,
-        track.duration(),
-        track.track_number(),
-        track.txt_lyrics(),
-        track.lrc_lyrics(),
-        is_instrumental,
-        track.bitrate(),
-    ))?;
 
     Ok(())
 }
