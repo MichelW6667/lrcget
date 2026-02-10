@@ -13,7 +13,7 @@
         <div class="w-full flex flex-col">
           <div
             v-for="virtualRow in virtualRows"
-            :key="virtualRow.index"
+            :key="virtualRow.key"
             class="group flex flex-col w-full absolute top-0 left-0"
             :style="{
               height: `${virtualRow.size}px`,
