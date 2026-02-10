@@ -1,5 +1,20 @@
 # Changelog
 
+## [1.3.0] - 2026-02-09
+
+### Added
+- Fallback to `id3` crate when lofty fails on corrupt APE tags, so tracks with valid ID3v2 tags are no longer skipped
+
+### Changed
+- Database migration v12: add indexes on tracks.album_id, tracks.artist_id, albums.artist_id for faster JOINs
+- Debounce search/filter/sort watchers in TrackList (200ms), consistent with Albums/Artists views
+- Virtual scrolling for download log (DownloadViewer) instead of rendering all 1000 DOM nodes
+- In-memory cache for artist/album lookups during library scan, eliminating redundant queries
+- Increase scan batch size from 100 to 500 tracks per transaction
+- Reduce heap allocations: FsTrack getters return &str instead of cloning Strings
+- Consolidate duplicate .lrc/.txt path parsing into single method
+- Give lyrics coverage bar layout priority over tabs in header
+
 ## [1.2.1] - 2026-02-09
 
 ### Fixed
