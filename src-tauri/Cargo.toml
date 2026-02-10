@@ -20,6 +20,7 @@ tauri = { version = "2", features = [ "protocol-asset", "devtools"] }
 globwalk = "0.9.1"
 reqwest = { version = "0.12.7", features = ["json"] }
 lofty = "0.21.1"
+id3 = "1.16"
 anyhow = "1.0.89"
 thiserror = "1.0"
 rusqlite = { version = "0.32.1", features = ["bundled"] }

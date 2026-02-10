@@ -1,9 +1,12 @@
 use crate::db;
 use anyhow::Result;
 use globwalk::{glob, DirEntry};
+use id3::TagLike;
+use lofty::config::{ParseOptions, ParsingMode};
 use lofty::error::LoftyError;
 use lofty::file::AudioFile;
 use lofty::file::TaggedFileExt;
+use lofty::probe::Probe;
 use lofty::read_from_path;
 use lofty::tag::Accessor;
 use rayon::prelude::*;
@@ -84,8 +87,29 @@ impl FsTrack {
     fn new_from_path(path: &Path) -> Result<FsTrack> {
         let file_path = path.display().to_string();
         let file_name = path.file_name().unwrap().to_str().unwrap().to_owned();
-        let tagged_file = read_from_path(&file_path)
-            .or_else(|err| Err(FsTrackError::ParseFailed(file_path.to_owned(), err)))?;
+
+        match read_from_path(&file_path) {
+            Ok(tagged_file) => {
+                Self::from_lofty_tagged_file(tagged_file, file_path, file_name, path)
+            }
+            Err(lofty_err) => {
+                // Fallback: lofty failed (often due to corrupt APE tags alongside valid ID3v2).
+                // Use id3 crate for tags, lofty with read_tags(false) for audio properties.
+                println!(
+                    "Warning: lofty failed for `{}`: {}. Trying id3 fallback...",
+                    file_path, lofty_err
+                );
+                Self::from_id3_fallback(path, &file_path, &file_name, lofty_err)
+            }
+        }
+    }
+
+    fn from_lofty_tagged_file(
+        tagged_file: lofty::file::TaggedFile,
+        file_path: String,
+        file_name: String,
+        _path: &Path,
+    ) -> Result<FsTrack> {
         let tag = tagged_file
             .primary_tag()
             .ok_or(FsTrackError::PrimaryTagNotFound(file_path.to_owned()))?
@@ -112,8 +136,59 @@ impl FsTrack {
         let bitrate = properties.audio_bitrate();
 
         let mut track = FsTrack::new(
-            file_path,
-            file_name,
+            file_path, file_name, title, album, artist, album_artist, duration, None, None,
+            track_number, bitrate,
+        );
+        track.txt_lyrics = track.get_txt_lyrics();
+        track.lrc_lyrics = track.get_lrc_lyrics();
+
+        Ok(track)
+    }
+
+    fn from_id3_fallback(
+        path: &Path,
+        file_path: &str,
+        file_name: &str,
+        lofty_err: LoftyError,
+    ) -> Result<FsTrack> {
+        // Read ID3v2 tags via the id3 crate (ignores APE tags entirely)
+        let id3_tag = id3::Tag::read_from_path(path)
+            .map_err(|_| FsTrackError::ParseFailed(file_path.to_owned(), lofty_err))?;
+
+        let title = id3_tag
+            .title()
+            .ok_or(FsTrackError::TitleNotFound(file_path.to_owned()))?
+            .to_string();
+        let album = id3_tag
+            .album()
+            .ok_or(FsTrackError::AlbumNotFound(file_path.to_owned()))?
+            .to_string();
+        let artist = id3_tag
+            .artist()
+            .ok_or(FsTrackError::ArtistNotFound(file_path.to_owned()))?
+            .to_string();
+        let album_artist = id3_tag
+            .album_artist()
+            .map(|s: &str| s.to_string())
+            .unwrap_or_else(|| artist.clone());
+        let track_number = id3_tag.track();
+
+        // Try lofty with tags disabled to get audio properties (duration, bitrate)
+        let (duration, bitrate) = Probe::open(file_path)
+            .and_then(|probe| {
+                probe
+                    .options(ParseOptions::new().read_tags(false).parsing_mode(ParsingMode::Relaxed))
+                    .read()
+            })
+            .map(|f| {
+                let props = f.properties();
+                (props.duration().as_secs_f64(), props.audio_bitrate())
+            })
+            .unwrap_or((0.0, None));
+
+        let mut track = FsTrack::new(
+            file_path.to_owned(),
+            file_name.to_owned(),
             title,
             album,
             artist,
@@ -126,6 +201,8 @@ impl FsTrack {
         );
         track.txt_lyrics = track.get_txt_lyrics();
         track.lrc_lyrics = track.get_lrc_lyrics();
+
+        println!("Successfully loaded `{}` via id3 fallback", file_path);
 
         Ok(track)
     }
