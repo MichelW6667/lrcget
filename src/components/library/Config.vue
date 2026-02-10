@@ -240,8 +240,6 @@ const beforeOpenHandler = async () => {
   skipTracksWithSyncedLyrics.value = config.skip_tracks_with_synced_lyrics
   skipTracksWithPlainLyrics.value = config.skip_tracks_with_plain_lyrics
 
-  console.log(skipTracksWithSyncedLyrics.value, skipTracksWithPlainLyrics.value)
-
   if (skipTracksWithSyncedLyrics.value && !skipTracksWithPlainLyrics.value) {
     downloadLyricsFor.value = 'skipSynced'
   } else if (skipTracksWithPlainLyrics.value) {

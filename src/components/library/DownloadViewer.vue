@@ -19,8 +19,8 @@
 
     <div class="rounded-lg p-3 bg-brave-98 dark:bg-brave-1 w-full text-xs grow overflow-auto">
       <div
-        v-for="logItem in log"
-        :key="logItem.title + logItem.artistName"
+        v-for="(logItem, index) in log"
+        :key="index"
         :class="{
           'text-green-800 dark:text-green-400': logItem.status === 'success',
           'text-yellow-700 dark:text-yellow-400': logItem.status === 'skipped',

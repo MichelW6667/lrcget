@@ -741,7 +741,7 @@ pub fn get_search_track_ids(
 pub fn get_albums(db: &Connection) -> Result<Vec<PersistentAlbum>> {
     let mut statement = db.prepare(indoc! {"
       SELECT albums.id, albums.name, albums.album_artist_name AS album_artist_name, albums.album_artist_name,
-          COUNT(tracks.id) AS tracks_count
+          albums.image_path, COUNT(tracks.id) AS tracks_count
       FROM albums
       JOIN tracks ON tracks.album_id = albums.id
       GROUP BY albums.id, albums.name, albums.album_artist_name

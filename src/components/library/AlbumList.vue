@@ -36,13 +36,11 @@
 </template>
 
 <script setup>
-import { DownloadMultiple } from 'mdue'
 import { ref, computed, onMounted, watch } from 'vue'
 import AlbumItem from './album-list/AlbumItem.vue'
 import AlbumTrackList from './album-list/AlbumTrackList.vue'
 import { useVirtualizer } from '@tanstack/vue-virtual'
 import { invoke } from '@tauri-apps/api/core'
-import { listen } from '@tauri-apps/api/event'
 import { useSearchLibrary } from '@/composables/search-library.js'
 import _debounce from 'lodash/debounce'
 
