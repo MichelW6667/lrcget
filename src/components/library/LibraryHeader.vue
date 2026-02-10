@@ -2,6 +2,42 @@
   <div class="px-4 py-2 h-12 flex justify-between gap-4 flex-none items-stretch">
     <div class="flex-1 ml-2 flex items-center gap-3">
       <MiniSearch v-if="props.activeTab === 'tracks'" />
+      <div v-else-if="props.activeTab === 'albums'" class="w-[16rem] relative h-full">
+        <input
+          v-model="albumSearchQuery"
+          type="text"
+          class="h-full input px-[2rem] py-1.5 pr-8 w-[16rem] dark:text-brave-95"
+          placeholder="Search albums..."
+        >
+        <div class="absolute top-0 left-0 w-[2rem] h-full flex justify-center items-center pl-0.5">
+          <Magnify class="text-brave-30 dark:text-brave-95" />
+        </div>
+        <button
+          v-if="albumSearchQuery !== ''"
+          @click="albumSearchQuery = ''"
+          class="absolute top-0 right-0 h-full w-8 flex justify-center items-center text-brave-30 hover:text-brave-20 dark:text-brave-95 dark:hover:text-brave-90"
+        >
+          <Close />
+        </button>
+      </div>
+      <div v-else-if="props.activeTab === 'artists'" class="w-[16rem] relative h-full">
+        <input
+          v-model="artistSearchQuery"
+          type="text"
+          class="h-full input px-[2rem] py-1.5 pr-8 w-[16rem] dark:text-brave-95"
+          placeholder="Search artists..."
+        >
+        <div class="absolute top-0 left-0 w-[2rem] h-full flex justify-center items-center pl-0.5">
+          <Magnify class="text-brave-30 dark:text-brave-95" />
+        </div>
+        <button
+          v-if="artistSearchQuery !== ''"
+          @click="artistSearchQuery = ''"
+          class="absolute top-0 right-0 h-full w-8 flex justify-center items-center text-brave-30 hover:text-brave-20 dark:text-brave-95 dark:hover:text-brave-90"
+        >
+          <Close />
+        </button>
+      </div>
       <LibraryStats />
     </div>
 
@@ -104,7 +140,7 @@
 <script setup>
 import { ref } from 'vue'
 import { useSearchLibrary } from '@/composables/search-library.js'
-import { DownloadMultiple, Loading, Check, Cog, Information, DotsVertical, Refresh, FolderMultiple } from 'mdue'
+import { DownloadMultiple, Loading, Check, Cog, Information, DotsVertical, Refresh, FolderMultiple, Magnify, Close } from 'mdue'
 import { useDownloader } from '@/composables/downloader.js'
 import MiniSearch from './MiniSearch.vue'
 import LibraryStats from './LibraryStats.vue'
@@ -114,7 +150,7 @@ const props = defineProps(['activeTab'])
 defineEmits(['changeActiveTab', 'showConfig', 'showAbout', 'showDownloadViewer', 'refreshLibrary', 'uninitializeLibrary'])
 
 const { isDownloading, totalCount, downloadedCount, addToQueue } = useDownloader()
-const { sortBy, sortOrder } = useSearchLibrary()
+const { sortBy, sortOrder, albumSearchQuery, artistSearchQuery } = useSearchLibrary()
 
 const isBuildingQueue = ref(false)
 

@@ -9,6 +9,8 @@ const filters = ref({
 })
 const sortBy = ref("title")
 const sortOrder = ref("asc")
+const albumSearchQuery = ref("")
+const artistSearchQuery = ref("")
 
 export function useSearchLibrary() {
   const setSearch = (text, newFilters) => {
@@ -22,5 +24,7 @@ export function useSearchLibrary() {
     setSearch,
     sortBy,
     sortOrder,
+    albumSearchQuery,
+    artistSearchQuery,
   }
 }
