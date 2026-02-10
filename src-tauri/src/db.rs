@@ -9,7 +9,7 @@ use rusqlite::{named_params, params, Connection};
 use std::fs;
 use tauri::{AppHandle, Manager};
 
-const CURRENT_DB_VERSION: u32 = 10;
+const CURRENT_DB_VERSION: u32 = 11;
 
 /// Initializes the database connection, creating the .sqlite file if needed, and upgrading the database
 /// if it's out of date.
@@ -238,6 +238,19 @@ pub fn upgrade_database_if_needed(
 
             tx.commit()?;
         }
+
+        if existing_version <= 10 {
+            println!("Migrate database version 11...");
+            let tx = db.transaction()?;
+
+            tx.pragma_update(None, "user_version", 11)?;
+
+            tx.execute_batch(indoc! {"
+            ALTER TABLE tracks ADD bitrate INTEGER;
+            "})?;
+
+            tx.commit()?;
+        }
     }
 
     Ok(())
@@ -430,7 +443,8 @@ pub fn get_track_by_id(id: i64, db: &Connection) -> Result<PersistentTrack> {
       albums.image_path,
       txt_lyrics,
       lrc_lyrics,
-      instrumental
+      instrumental,
+      bitrate
     FROM tracks
     JOIN albums ON tracks.album_id = albums.id
     JOIN artists ON tracks.artist_id = artists.id
@@ -458,6 +472,7 @@ pub fn get_track_by_id(id: i64, db: &Connection) -> Result<PersistentTrack> {
             lrc_lyrics: row.get("lrc_lyrics")?,
             image_path: row.get("image_path")?,
             instrumental: is_instrumental.unwrap_or(false),
+            bitrate: row.get("bitrate")?,
         })
     })?;
     Ok(row)
@@ -550,8 +565,9 @@ pub fn add_track(track: &fs_track::FsTrack, db: &Connection) -> Result<()> {
         track_number,
         txt_lyrics,
         lrc_lyrics,
-        instrumental
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        instrumental,
+        bitrate
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   "};
     let mut statement = db.prepare(query)?;
     statement.execute((
@@ -566,6 +582,7 @@ pub fn add_track(track: &fs_track::FsTrack, db: &Connection) -> Result<()> {
         track.txt_lyrics(),
         track.lrc_lyrics(),
         is_instrumental,
+        track.bitrate(),
     ))?;
 
     Ok(())
@@ -577,7 +594,7 @@ pub fn get_tracks(db: &Connection) -> Result<Vec<PersistentTrack>> {
           tracks.id, file_path, file_name, title,
           artists.name AS artist_name, tracks.artist_id,
           albums.name AS album_name, albums.album_artist_name, album_id, duration, track_number,
-          albums.image_path, txt_lyrics, lrc_lyrics, instrumental
+          albums.image_path, txt_lyrics, lrc_lyrics, instrumental, bitrate
       FROM tracks
       JOIN albums ON tracks.album_id = albums.id
       JOIN artists ON tracks.artist_id = artists.id
@@ -606,6 +623,7 @@ pub fn get_tracks(db: &Connection) -> Result<Vec<PersistentTrack>> {
             lrc_lyrics: row.get("lrc_lyrics")?,
             image_path: row.get("image_path")?,
             instrumental: is_instrumental.unwrap_or(false),
+            bitrate: row.get("bitrate")?,
         };
 
         tracks.push(track);
@@ -895,7 +913,8 @@ pub fn get_album_tracks(album_id: i64, db: &Connection) -> Result<Vec<Persistent
       albums.image_path,
       txt_lyrics,
       lrc_lyrics,
-      instrumental
+      instrumental,
+      bitrate
     FROM tracks
     JOIN albums ON tracks.album_id = albums.id
     JOIN artists ON tracks.artist_id = artists.id
@@ -924,6 +943,7 @@ pub fn get_album_tracks(album_id: i64, db: &Connection) -> Result<Vec<Persistent
             lrc_lyrics: row.get("lrc_lyrics")?,
             image_path: row.get("image_path")?,
             instrumental: is_instrumental.unwrap_or(false),
+            bitrate: row.get("bitrate")?,
         };
 
         tracks.push(track);
@@ -965,7 +985,7 @@ pub fn get_artist_tracks(artist_id: i64, db: &Connection) -> Result<Vec<Persiste
     let mut statement = db.prepare(indoc! {"
       SELECT tracks.id, file_path, file_name, title, artists.name AS artist_name,
         tracks.artist_id, albums.name AS album_name, albums.album_artist_name, album_id, duration, track_number,
-        albums.image_path, txt_lyrics, lrc_lyrics, instrumental
+        albums.image_path, txt_lyrics, lrc_lyrics, instrumental, bitrate
       FROM tracks
       JOIN albums ON tracks.album_id = albums.id
       JOIN artists ON tracks.artist_id = artists.id
@@ -994,6 +1014,7 @@ pub fn get_artist_tracks(artist_id: i64, db: &Connection) -> Result<Vec<Persiste
             lrc_lyrics: row.get("lrc_lyrics")?,
             image_path: row.get("image_path")?,
             instrumental: is_instrumental.unwrap_or(false),
+            bitrate: row.get("bitrate")?,
         };
 
         tracks.push(track);

@@ -17,7 +17,7 @@
     </div>
 
     <!-- Track title, album, and artist -->
-    <div class="flex-none flex p-1" :class="{ 'w-[65%]': !isShowTrackNumber, 'w-[60%]': isShowTrackNumber }" @click="playTrack(track)">
+    <div class="flex-none flex p-1" :class="{ 'w-[60%]': !isShowTrackNumber, 'w-[55%]': isShowTrackNumber }" @click="playTrack(track)">
       <div v-if="track">
         <div class="font-bold text-sm text-brave-20 flex items-center dark:text-brave-95">
           <Equalizer v-if="isPlaying && status === 'playing' && !editingTrack" class="mr-1" />
@@ -32,8 +32,16 @@
       </div>
     </div>
 
+    <!-- Format & Bitrate -->
+    <div class="flex-none w-[8%] flex items-center justify-end p-1" @click="playTrack(track)">
+      <div v-if="track" class="text-brave-30/60 text-[0.65rem] text-right dark:text-brave-90/60">
+        <div>{{ fileFormat }}</div>
+        <div v-if="track.bitrate">{{ track.bitrate }} kbps</div>
+      </div>
+    </div>
+
     <!-- Duration -->
-    <div class="flex-none w-[10%] flex items-center justify-end p-1" @click="playTrack(track)">
+    <div class="flex-none w-[7%] flex items-center justify-end p-1" @click="playTrack(track)">
       <div v-if="track" class="text-brave-30 font-bold text-xs text-right dark:text-brave-95">{{ humanDuration(track.duration) }}</div>
     </div>
 
@@ -80,6 +88,12 @@ const unlistenReload = ref(null)
 
 const isPlaying = computed(() => {
   return playingTrack.value && track.value && playingTrack.value.id === track.value.id
+})
+
+const fileFormat = computed(() => {
+  if (!track.value) return ''
+  const ext = track.value.file_name.split('.').pop()
+  return ext ? ext.toUpperCase() : ''
 })
 
 onMounted(async () => {

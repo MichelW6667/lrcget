@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.2.0] - 2026-02-09
+
+### Added
+- Display file format (MP3/FLAC/OGG/etc.) and bitrate (kbps) for each track in the track list
+- New "Format" column in track list headers across all views (Tracks, Album tracks, Artist tracks)
+
+### Changed
+- Database migration v11: added bitrate column to tracks table (requires library refresh to populate)
+
 ## [1.1.2] - 2026-02-09
 
 ### Fixed

@@ -26,6 +26,7 @@ pub struct PersistentTrack {
     pub lrc_lyrics: Option<String>,
     pub duration: f64,
     pub instrumental: bool,
+    pub bitrate: Option<i64>,
 }
 
 #[derive(Serialize)]

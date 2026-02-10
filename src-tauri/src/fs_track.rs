@@ -27,6 +27,7 @@ pub struct FsTrack {
     txt_lyrics: Option<String>,
     lrc_lyrics: Option<String>,
     track_number: Option<u32>,
+    bitrate: Option<u32>,
 }
 
 #[derive(Error, Debug)]
@@ -63,6 +64,7 @@ impl FsTrack {
         txt_lyrics: Option<String>,
         lrc_lyrics: Option<String>,
         track_number: Option<u32>,
+        bitrate: Option<u32>,
     ) -> FsTrack {
         FsTrack {
             file_path,
@@ -75,6 +77,7 @@ impl FsTrack {
             txt_lyrics,
             lrc_lyrics,
             track_number,
+            bitrate,
         }
     }
 
@@ -106,6 +109,7 @@ impl FsTrack {
             .unwrap_or_else(|| artist.clone());
         let duration = properties.duration().as_secs_f64();
         let track_number = tag.track();
+        let bitrate = properties.audio_bitrate();
 
         let mut track = FsTrack::new(
             file_path,
@@ -118,6 +122,7 @@ impl FsTrack {
             None,
             None,
             track_number,
+            bitrate,
         );
         track.txt_lyrics = track.get_txt_lyrics();
         track.lrc_lyrics = track.get_lrc_lyrics();
@@ -163,6 +168,10 @@ impl FsTrack {
 
     pub fn track_number(&self) -> Option<u32> {
         self.track_number
+    }
+
+    pub fn bitrate(&self) -> Option<u32> {
+        self.bitrate
     }
 
     fn get_txt_path(&self) -> String {
