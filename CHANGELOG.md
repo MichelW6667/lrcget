@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.2.1] - 2026-02-09
+
+### Fixed
+- Fix get_albums() missing image_path in SELECT causing runtime error
+- Fix virtualRow key reuse in TrackList, AlbumTrackList, ArtistTrackList causing stale data
+- Fix non-unique key in DownloadViewer log list
+- Remove stale console.log and unused imports
+
 ## [1.2.0] - 2026-02-09
 
 ### Added
