@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.1.2] - 2026-02-09
+
+### Fixed
+- Fix album/artist search showing stale results due to virtualizer component recycling
+- Fix album search not matching on artist name
+
 ## [1.1.1] - 2026-02-09
 
 ### Added
