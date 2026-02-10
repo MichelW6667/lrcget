@@ -9,7 +9,7 @@ use rusqlite::{named_params, params, Connection};
 use std::fs;
 use tauri::{AppHandle, Manager};
 
-const CURRENT_DB_VERSION: u32 = 11;
+const CURRENT_DB_VERSION: u32 = 12;
 
 /// Initializes the database connection, creating the .sqlite file if needed, and upgrading the database
 /// if it's out of date.
@@ -247,6 +247,21 @@ pub fn upgrade_database_if_needed(
 
             tx.execute_batch(indoc! {"
             ALTER TABLE tracks ADD bitrate INTEGER;
+            "})?;
+
+            tx.commit()?;
+        }
+
+        if existing_version <= 11 {
+            println!("Migrate database version 12...");
+            let tx = db.transaction()?;
+
+            tx.pragma_update(None, "user_version", 12)?;
+
+            tx.execute_batch(indoc! {"
+            CREATE INDEX IF NOT EXISTS idx_tracks_album_id ON tracks(album_id);
+            CREATE INDEX IF NOT EXISTS idx_tracks_artist_id ON tracks(artist_id);
+            CREATE INDEX IF NOT EXISTS idx_albums_artist_id ON albums(artist_id);
             "})?;
 
             tx.commit()?;

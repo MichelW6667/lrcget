@@ -17,19 +17,29 @@
       </div>
     </div>
 
-    <div class="rounded-lg p-3 bg-brave-98 dark:bg-brave-1 w-full text-xs grow overflow-auto">
-      <div
-        v-for="(logItem, index) in log"
-        :key="index"
-        :class="{
-          'text-green-800 dark:text-green-400': logItem.status === 'success',
-          'text-yellow-700 dark:text-yellow-400': logItem.status === 'skipped',
-          'text-brave-50 dark:text-brave-60': logItem.status === 'not_found',
-          'text-red-800 dark:text-red-400': logItem.status === 'failure',
-        }"
-      >
-        <strong>{{ logItem.title }} - {{ logItem.artistName }}</strong>:
-        <span>{{ logItem.message }}</span>
+    <div ref="logRef" class="rounded-lg p-3 bg-brave-98 dark:bg-brave-1 w-full text-xs grow overflow-auto">
+      <div :style="{ height: `${logTotalSize}px`, width: '100%', position: 'relative' }">
+        <div
+          v-for="virtualRow in logVirtualRows"
+          :key="virtualRow.index"
+          :style="{
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            width: '100%',
+            height: `${virtualRow.size}px`,
+            transform: `translateY(${virtualRow.start}px)`,
+          }"
+          :class="{
+            'text-green-800 dark:text-green-400': log[virtualRow.index].status === 'success',
+            'text-yellow-700 dark:text-yellow-400': log[virtualRow.index].status === 'skipped',
+            'text-brave-50 dark:text-brave-60': log[virtualRow.index].status === 'not_found',
+            'text-red-800 dark:text-red-400': log[virtualRow.index].status === 'failure',
+          }"
+        >
+          <strong>{{ log[virtualRow.index].title }} - {{ log[virtualRow.index].artistName }}</strong>:
+          <span>{{ log[virtualRow.index].message }}</span>
+        </div>
       </div>
     </div>
 
@@ -46,7 +56,8 @@
 </template>
 
 <script setup>
-import { onUnmounted, computed } from 'vue'
+import { onUnmounted, computed, ref } from 'vue'
+import { useVirtualizer } from '@tanstack/vue-virtual'
 import { useDownloader } from '@/composables/downloader.js'
 
 const {
@@ -65,6 +76,20 @@ const {
 } = useDownloader()
 
 const emit = defineEmits(['close'])
+
+const logRef = ref(null)
+
+const logVirtualizer = useVirtualizer(
+  computed(() => ({
+    count: log.value.length,
+    getScrollElement: () => logRef.value,
+    estimateSize: () => 20,
+    overscan: 10,
+  }))
+)
+
+const logVirtualRows = computed(() => logVirtualizer.value.getVirtualItems())
+const logTotalSize = computed(() => logVirtualizer.value.getTotalSize())
 
 const progressWidth = computed(() => {
   if (!downloadQueue.value) {

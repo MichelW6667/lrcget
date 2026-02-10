@@ -45,6 +45,7 @@ import { useVirtualizer } from '@tanstack/vue-virtual'
 import { ref, computed, watch, onMounted } from 'vue'
 import { invoke } from '@tauri-apps/api/core'
 import { useSearchLibrary } from '@/composables/search-library.js'
+import _debounce from 'lodash/debounce'
 
 const props = defineProps(['isActive'])
 const emit = defineEmits(['playTrack', 'downloadLyrics'])
@@ -97,6 +98,8 @@ const getTrackIds = async () => {
   }
 }
 
+const debouncedGetTrackIds = _debounce(getTrackIds, 200)
+
 onMounted(async () => {
   if (props.isActive) {
     await getTrackIds()
@@ -109,27 +112,9 @@ watch(() => props.isActive, async () => {
   }
 })
 
-watch(searchValue, async () => {
-  try {
-    await getTrackIds()
-  } catch (error) {
-    console.error(error)
-  }
-})
+watch(searchValue, debouncedGetTrackIds)
 
-watch(filters, async () => {
-  try {
-    await getTrackIds()
-  } catch (error) {
-    console.error(error)
-  }
-}, { deep: true })
+watch(filters, debouncedGetTrackIds, { deep: true })
 
-watch([sortBy, sortOrder], async () => {
-  try {
-    await getTrackIds()
-  } catch (error) {
-    console.error(error)
-  }
-})
+watch([sortBy, sortOrder], debouncedGetTrackIds)
 </script>
