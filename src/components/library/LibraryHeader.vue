@@ -41,7 +41,7 @@
       <LibraryStats />
     </div>
 
-    <div class="flex-1 flex gap-4 justify-center items-center text-sm">
+    <div class="flex-none flex gap-4 justify-center items-center text-sm">
       <button
         class="tab"
         :class="{'active-tab': props.activeTab === 'tracks', 'inactive-tab': activeTab !== 'tracks'}"
