@@ -122,8 +122,7 @@ pub async fn refresh_library(
         .ok_or("Database not initialized")?;
 
     let (conn, result) = tokio::task::spawn_blocking(move || {
-        library::uninitialize_library(&conn).ok();
-        let result = library::initialize_library(&mut conn, app_handle);
+        let result = library::refresh_library(&mut conn, app_handle);
         (conn, result)
     })
     .await

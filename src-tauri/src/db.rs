@@ -9,7 +9,7 @@ use rusqlite::{named_params, params, Connection};
 use std::fs;
 use tauri::{AppHandle, Manager};
 
-const CURRENT_DB_VERSION: u32 = 12;
+const CURRENT_DB_VERSION: u32 = 13;
 
 /// Initializes the database connection, creating the .sqlite file if needed, and upgrading the database
 /// if it's out of date.
@@ -266,6 +266,26 @@ pub fn upgrade_database_if_needed(
 
             tx.commit()?;
         }
+
+        if existing_version <= 12 {
+            println!("Migrate database version 13...");
+            let tx = db.transaction()?;
+
+            tx.pragma_update(None, "user_version", 13)?;
+
+            tx.execute_batch(indoc! {"
+                ALTER TABLE tracks ADD lyrics_status TEXT DEFAULT 'missing';
+                UPDATE tracks SET lyrics_status = CASE
+                    WHEN instrumental = 1 THEN 'instrumental'
+                    WHEN lrc_lyrics IS NOT NULL AND lrc_lyrics != '[au: instrumental]' THEN 'synced'
+                    WHEN txt_lyrics IS NOT NULL THEN 'plain'
+                    ELSE 'missing'
+                END;
+                CREATE INDEX idx_tracks_lyrics_status ON tracks(lyrics_status);
+            "})?;
+
+            tx.commit()?;
+        }
     }
 
     Ok(())
@@ -393,10 +413,10 @@ pub fn get_library_stats(db: &Connection) -> Result<LibraryStats> {
     let mut statement = db.prepare(indoc! {"
       SELECT
         COUNT(*) as total,
-        SUM(CASE WHEN instrumental = 1 THEN 1 ELSE 0 END) as instrumental,
-        SUM(CASE WHEN lrc_lyrics IS NOT NULL AND lrc_lyrics != '[au: instrumental]' THEN 1 ELSE 0 END) as synced,
-        SUM(CASE WHEN lrc_lyrics IS NULL AND txt_lyrics IS NOT NULL THEN 1 ELSE 0 END) as plain_only,
-        SUM(CASE WHEN lrc_lyrics IS NULL AND txt_lyrics IS NULL AND instrumental = 0 THEN 1 ELSE 0 END) as missing
+        SUM(CASE WHEN lyrics_status = 'instrumental' THEN 1 ELSE 0 END) as instrumental,
+        SUM(CASE WHEN lyrics_status = 'synced' THEN 1 ELSE 0 END) as synced,
+        SUM(CASE WHEN lyrics_status = 'plain' THEN 1 ELSE 0 END) as plain_only,
+        SUM(CASE WHEN lyrics_status = 'missing' THEN 1 ELSE 0 END) as missing
       FROM tracks
     "})?;
     let row = statement.query_row([], |r| {
@@ -500,7 +520,7 @@ pub fn update_track_synced_lyrics(
     db: &Connection,
 ) -> Result<PersistentTrack> {
     let mut statement = db.prepare(
-        "UPDATE tracks SET lrc_lyrics = ?, txt_lyrics = ?, instrumental = false WHERE id = ?",
+        "UPDATE tracks SET lrc_lyrics = ?, txt_lyrics = ?, instrumental = false, lyrics_status = 'synced' WHERE id = ?",
     )?;
     statement.execute((synced_lyrics, plain_lyrics, id))?;
 
@@ -513,7 +533,7 @@ pub fn update_track_plain_lyrics(
     db: &Connection,
 ) -> Result<PersistentTrack> {
     let mut statement = db.prepare(
-        "UPDATE tracks SET txt_lyrics = ?, lrc_lyrics = null, instrumental = false WHERE id = ?",
+        "UPDATE tracks SET txt_lyrics = ?, lrc_lyrics = null, instrumental = false, lyrics_status = 'plain' WHERE id = ?",
     )?;
     statement.execute((plain_lyrics, id))?;
 
@@ -522,7 +542,7 @@ pub fn update_track_plain_lyrics(
 
 pub fn update_track_null_lyrics(id: i64, db: &Connection) -> Result<PersistentTrack> {
     let mut statement = db.prepare(
-        "UPDATE tracks SET txt_lyrics = null, lrc_lyrics = null, instrumental = false WHERE id = ?",
+        "UPDATE tracks SET txt_lyrics = null, lrc_lyrics = null, instrumental = false, lyrics_status = 'missing' WHERE id = ?",
     )?;
     statement.execute([id])?;
 
@@ -531,26 +551,27 @@ pub fn update_track_null_lyrics(id: i64, db: &Connection) -> Result<PersistentTr
 
 pub fn update_track_instrumental(id: i64, db: &Connection) -> Result<PersistentTrack> {
     let mut statement = db.prepare(
-        "UPDATE tracks SET txt_lyrics = null, lrc_lyrics = ?, instrumental = true WHERE id = ?",
+        "UPDATE tracks SET txt_lyrics = null, lrc_lyrics = ?, instrumental = true, lyrics_status = 'instrumental' WHERE id = ?",
     )?;
     statement.execute(params!["[au: instrumental]", id])?;
 
     Ok(get_track_by_id(id, db)?)
 }
 
-pub fn add_tracks(tracks: &Vec<fs_track::FsTrack>, db: &mut Connection) -> Result<()> {
+pub fn add_tracks(
+    tracks: &Vec<fs_track::FsTrack>,
+    db: &mut Connection,
+    artist_cache: &mut std::collections::HashMap<String, i64>,
+    album_cache: &mut std::collections::HashMap<(String, String), i64>,
+) -> Result<()> {
     let tx = db.transaction()?;
-
-    // In-memory caches to avoid repeated SELECT queries for the same artist/album
-    let mut artist_cache: std::collections::HashMap<String, i64> = std::collections::HashMap::new();
-    let mut album_cache: std::collections::HashMap<(String, String), i64> = std::collections::HashMap::new();
 
     // Prepare statement once, reuse for all tracks in the batch
     let mut insert_stmt = tx.prepare(indoc! {"
         INSERT INTO tracks (
             file_path, file_name, title, title_lower, album_id, artist_id,
-            duration, track_number, txt_lyrics, lrc_lyrics, instrumental, bitrate
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            duration, track_number, txt_lyrics, lrc_lyrics, instrumental, bitrate, lyrics_status
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     "})?;
 
     for track in tracks.iter() {
@@ -582,6 +603,16 @@ pub fn add_tracks(tracks: &Vec<fs_track::FsTrack>, db: &mut Connection) -> Resul
             .lrc_lyrics()
             .map_or(false, |lyrics| RE_INSTRUMENTAL.is_match(lyrics));
 
+        let lyrics_status = if is_instrumental {
+            "instrumental"
+        } else if track.lrc_lyrics().is_some() {
+            "synced"
+        } else if track.txt_lyrics().is_some() {
+            "plain"
+        } else {
+            "missing"
+        };
+
         insert_stmt.execute((
             track.file_path(),
             track.file_name(),
@@ -595,6 +626,7 @@ pub fn add_tracks(tracks: &Vec<fs_track::FsTrack>, db: &mut Connection) -> Resul
             track.lrc_lyrics(),
             is_instrumental,
             track.bitrate(),
+            lyrics_status,
         ))?;
     }
 
@@ -657,25 +689,16 @@ pub fn get_track_ids(
     sort_order: &str,
     db: &Connection
 ) -> Result<Vec<i64>> {
-    let base_query = "SELECT id, lrc_lyrics, txt_lyrics, instrumental FROM tracks";
+    let base_query = "SELECT id FROM tracks";
 
-    let mut conditions = Vec::new();
+    let mut excluded = Vec::new();
+    if !synced_lyrics { excluded.push("'synced'"); }
+    if !plain_lyrics { excluded.push("'plain'"); }
+    if !instrumental { excluded.push("'instrumental'"); }
+    if !no_lyrics { excluded.push("'missing'"); }
 
-    if !synced_lyrics {
-        conditions.push("(lrc_lyrics IS NULL OR lrc_lyrics = '[au: instrumental]')");
-    }
-    if !plain_lyrics {
-        conditions.push("(txt_lyrics IS NULL OR lrc_lyrics IS NOT NULL)");
-    }
-    if !instrumental {
-        conditions.push("instrumental = false");
-    }
-    if !no_lyrics {
-        conditions.push("(txt_lyrics IS NOT NULL OR lrc_lyrics IS NOT NULL OR instrumental = true)");
-    }
-
-    let where_clause = if !conditions.is_empty() {
-        format!(" WHERE {}", conditions.join(" AND "))
+    let where_clause = if !excluded.is_empty() {
+        format!(" WHERE lyrics_status NOT IN ({})", excluded.join(", "))
     } else {
         String::new()
     };
@@ -705,7 +728,7 @@ pub fn get_search_track_ids(
     db: &Connection
 ) -> Result<Vec<i64>> {
     let base_query = indoc! {"
-      SELECT tracks.id, tracks.lrc_lyrics, tracks.txt_lyrics, tracks.instrumental
+      SELECT tracks.id
       FROM tracks
       JOIN artists ON tracks.artist_id = artists.id
       JOIN albums ON tracks.album_id = albums.id
@@ -714,23 +737,14 @@ pub fn get_search_track_ids(
       OR tracks.title_lower LIKE ?)
     "};
 
-    let mut conditions = Vec::new();
+    let mut excluded = Vec::new();
+    if !synced_lyrics { excluded.push("'synced'"); }
+    if !plain_lyrics { excluded.push("'plain'"); }
+    if !instrumental { excluded.push("'instrumental'"); }
+    if !no_lyrics { excluded.push("'missing'"); }
 
-    if !synced_lyrics {
-        conditions.push("(lrc_lyrics IS NULL OR lrc_lyrics = '[au: instrumental]')");
-    }
-    if !plain_lyrics {
-        conditions.push("(txt_lyrics IS NULL OR lrc_lyrics IS NOT NULL)");
-    }
-    if !instrumental {
-        conditions.push("instrumental = false");
-    }
-    if !no_lyrics {
-        conditions.push("(txt_lyrics IS NOT NULL OR lrc_lyrics IS NOT NULL OR instrumental = true)");
-    }
-
-    let where_clause = if !conditions.is_empty() {
-        format!(" AND {}", conditions.join(" AND "))
+    let where_clause = if !excluded.is_empty() {
+        format!(" AND tracks.lyrics_status NOT IN ({})", excluded.join(", "))
     } else {
         String::new()
     };
@@ -970,15 +984,17 @@ pub fn get_album_tracks(album_id: i64, db: &Connection) -> Result<Vec<Persistent
 
 pub fn get_album_track_ids(album_id: i64, without_plain_lyrics: bool, without_synced_lyrics: bool, sort_by: &str, sort_order: &str, db: &Connection) -> Result<Vec<i64>> {
     let base_query = indoc! {"
-      SELECT tracks.id, tracks.lrc_lyrics, tracks.txt_lyrics, tracks.instrumental
+      SELECT tracks.id
       FROM tracks
       JOIN albums ON tracks.album_id = albums.id
       WHERE tracks.album_id = ?"};
 
+    // without_plain = only tracks without txt_lyrics (= 'missing', since synced always has txt)
+    // without_synced = only tracks without lrc_lyrics (= 'missing' + 'plain')
     let lyrics_conditions = match (without_plain_lyrics, without_synced_lyrics) {
-        (true, true) => " AND txt_lyrics IS NULL AND lrc_lyrics IS NULL AND tracks.instrumental = false",
-        (true, false) => " AND txt_lyrics IS NULL AND tracks.instrumental = false",
-        (false, true) => " AND lrc_lyrics IS NULL AND tracks.instrumental = false",
+        (true, true) => " AND tracks.lyrics_status = 'missing'",
+        (true, false) => " AND tracks.lyrics_status = 'missing'",
+        (false, true) => " AND tracks.lyrics_status IN ('missing', 'plain')",
         (false, false) => "",
     };
 
@@ -1041,16 +1057,16 @@ pub fn get_artist_tracks(artist_id: i64, db: &Connection) -> Result<Vec<Persiste
 
 pub fn get_artist_track_ids(artist_id: i64, without_plain_lyrics: bool, without_synced_lyrics: bool, sort_by: &str, sort_order: &str, db: &Connection) -> Result<Vec<i64>> {
     let base_query = indoc! {"
-      SELECT tracks.id, tracks.lrc_lyrics, tracks.txt_lyrics, tracks.instrumental
+      SELECT tracks.id
       FROM tracks
       JOIN albums ON tracks.album_id = albums.id
       JOIN artists ON tracks.artist_id = artists.id
       WHERE tracks.artist_id = ?"};
 
     let lyrics_conditions = match (without_plain_lyrics, without_synced_lyrics) {
-        (true, true) => " AND txt_lyrics IS NULL AND lrc_lyrics IS NULL AND tracks.instrumental = false",
-        (true, false) => " AND txt_lyrics IS NULL AND tracks.instrumental = false",
-        (false, true) => " AND lrc_lyrics IS NULL AND tracks.instrumental = false",
+        (true, true) => " AND tracks.lyrics_status = 'missing'",
+        (true, false) => " AND tracks.lyrics_status = 'missing'",
+        (false, true) => " AND tracks.lyrics_status IN ('missing', 'plain')",
         (false, false) => "",
     };
 
@@ -1074,4 +1090,48 @@ pub fn clean_library(db: &Connection) -> Result<()> {
     db.execute("DELETE FROM albums WHERE 1", ())?;
     db.execute("DELETE FROM artists WHERE 1", ())?;
     Ok(())
+}
+
+pub fn get_existing_file_paths(db: &Connection) -> Result<std::collections::HashSet<String>> {
+    let mut statement = db.prepare("SELECT file_path FROM tracks")?;
+    let mut rows = statement.query([])?;
+    let mut paths = std::collections::HashSet::new();
+    while let Some(row) = rows.next()? {
+        paths.insert(row.get(0)?);
+    }
+    Ok(paths)
+}
+
+pub fn delete_tracks_not_in(file_paths: &std::collections::HashSet<String>, db: &Connection) -> Result<usize> {
+    let all_db_paths = get_existing_file_paths(db)?;
+    let to_delete: Vec<&String> = all_db_paths.iter().filter(|p| !file_paths.contains(*p)).collect();
+    let count = to_delete.len();
+
+    if count > 0 {
+        for chunk in to_delete.chunks(500) {
+            let placeholders: Vec<&str> = chunk.iter().map(|_| "?").collect();
+            let query = format!("DELETE FROM tracks WHERE file_path IN ({})", placeholders.join(", "));
+            let mut stmt = db.prepare(&query)?;
+            let params: Vec<&dyn rusqlite::types::ToSql> = chunk.iter().map(|s| s as &dyn rusqlite::types::ToSql).collect();
+            stmt.execute(params.as_slice())?;
+        }
+    }
+
+    Ok(count)
+}
+
+pub fn delete_orphan_albums(db: &Connection) -> Result<usize> {
+    let count = db.execute(
+        "DELETE FROM albums WHERE id NOT IN (SELECT DISTINCT album_id FROM tracks)",
+        (),
+    )?;
+    Ok(count)
+}
+
+pub fn delete_orphan_artists(db: &Connection) -> Result<usize> {
+    let count = db.execute(
+        "DELETE FROM artists WHERE id NOT IN (SELECT DISTINCT artist_id FROM tracks)",
+        (),
+    )?;
+    Ok(count)
 }

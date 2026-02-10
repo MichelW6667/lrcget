@@ -38,7 +38,7 @@
           <Close />
         </button>
       </div>
-      <LibraryStats />
+      <LibraryStats class="flex-1" />
     </div>
 
     <div class="flex-none flex gap-4 justify-center items-center text-sm">
@@ -76,7 +76,7 @@
       </button>
     </div>
 
-    <div class="flex-1 flex justify-end items-center gap-1">
+    <div class="flex-none flex justify-end items-center gap-1">
       <button v-if="isBuildingQueue" class="button button-disabled px-4 py-1.5 h-full min-w-[12rem] text-xs rounded-full" @click.prevent="$emit('showDownloadViewer')" disabled>
         <div class="animate-spin text-sm"><Loading /></div>
         <div class="flex gap-1">

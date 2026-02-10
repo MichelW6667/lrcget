@@ -34,6 +34,19 @@ pub fn initialize_library(conn: &mut Connection, app_handle: AppHandle) -> Resul
     }
 }
 
+pub fn refresh_library(conn: &mut Connection, app_handle: AppHandle) -> Result<()> {
+    let directories = db::get_directories(conn)?;
+    let result = fs_track::refresh_tracks_from_directories(&directories, conn, app_handle);
+
+    match result {
+        Ok(()) => Ok(()),
+        Err(err) => {
+            println!("Library refresh errored: {}", err);
+            Err(err)
+        }
+    }
+}
+
 pub fn uninitialize_library(conn: &Connection) -> Result<()> {
     db::clean_library(conn)?;
     db::set_init(false, conn)?;

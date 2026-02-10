@@ -11,6 +11,7 @@ use lofty::tag::Accessor;
 use rayon::prelude::*;
 use rusqlite::Connection;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::path::Path;
 use std::time::Instant;
 use tauri::{AppHandle, Emitter};
@@ -310,15 +311,24 @@ pub fn load_tracks_from_directories(
     println!("Files count: {}", files_count);
     let mut files_scanned: usize = 0;
 
+    // Persistent caches across all batches
+    let mut artist_cache: HashMap<String, i64> = HashMap::new();
+    let mut album_cache: HashMap<(String, String), i64> = HashMap::new();
+
     for batch in all_entries.chunks(500) {
         let tracks = load_tracks_from_entry_batch(batch)?;
-        db::add_tracks(&tracks, conn)?;
+        db::add_tracks(&tracks, conn, &mut artist_cache, &mut album_cache)?;
         files_scanned += batch.len();
+        let progress = if files_count > 0 {
+            Some(files_scanned as f64 / files_count as f64)
+        } else {
+            None
+        };
         app_handle
             .emit(
                 "initialize-progress",
                 ScanProgress {
-                    progress: None,
+                    progress,
                     files_scanned,
                     files_count: Some(files_count),
                 },
@@ -327,6 +337,80 @@ pub fn load_tracks_from_directories(
     }
 
     println!("==> Scanning tracks take: {}ms", now.elapsed().as_millis());
+
+    Ok(())
+}
+
+pub fn refresh_tracks_from_directories(
+    directories: &Vec<String>,
+    conn: &mut Connection,
+    app_handle: AppHandle,
+) -> Result<()> {
+    let now = Instant::now();
+
+    // Get existing file paths from DB
+    let existing_paths = db::get_existing_file_paths(conn)?;
+    println!("Existing tracks in DB: {}", existing_paths.len());
+
+    // Scan filesystem
+    let mut all_entries: Vec<DirEntry> = Vec::new();
+    for directory in directories.iter() {
+        let globwalker = glob(format!("{}{}", directory, GLOB_PATTERN))?;
+        for item in globwalker {
+            all_entries.push(item?);
+        }
+    }
+
+    // Split into new files only (skip existing)
+    let mut disk_paths: std::collections::HashSet<String> = std::collections::HashSet::new();
+    let mut new_entries: Vec<DirEntry> = Vec::new();
+    for entry in all_entries {
+        let path_str = entry.path().display().to_string();
+        disk_paths.insert(path_str.clone());
+        if !existing_paths.contains(&path_str) {
+            new_entries.push(entry);
+        }
+    }
+
+    let new_count = new_entries.len();
+    println!("New files to add: {}", new_count);
+
+    // Delete tracks that are no longer on disk
+    let deleted = db::delete_tracks_not_in(&disk_paths, conn)?;
+    println!("Removed {} tracks no longer on disk", deleted);
+
+    // Clean up orphaned albums/artists
+    if deleted > 0 {
+        let orphan_albums = db::delete_orphan_albums(conn)?;
+        let orphan_artists = db::delete_orphan_artists(conn)?;
+        println!("Cleaned up {} orphan albums, {} orphan artists", orphan_albums, orphan_artists);
+    }
+
+    // Insert new tracks in batches
+    if new_count > 0 {
+        let mut files_scanned: usize = 0;
+        let mut artist_cache: HashMap<String, i64> = HashMap::new();
+        let mut album_cache: HashMap<(String, String), i64> = HashMap::new();
+
+        for batch in new_entries.chunks(500) {
+            let tracks = load_tracks_from_entry_batch(batch)?;
+            db::add_tracks(&tracks, conn, &mut artist_cache, &mut album_cache)?;
+            files_scanned += batch.len();
+            let progress = Some(files_scanned as f64 / new_count as f64);
+            app_handle
+                .emit(
+                    "initialize-progress",
+                    ScanProgress {
+                        progress,
+                        files_scanned,
+                        files_count: Some(new_count),
+                    },
+                )
+                .unwrap();
+        }
+    }
+
+    println!("==> Library refresh took: {}ms", now.elapsed().as_millis());
 
     Ok(())
 }

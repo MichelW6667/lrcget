@@ -1,7 +1,5 @@
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { invoke } from '@tauri-apps/api/core'
-
-const delay = (time) => new Promise((resolve, reject) => setTimeout(resolve, time))
 
 const downloadQueue = ref([])
 const downloadedItems = ref([])
@@ -62,12 +60,26 @@ const downloadLyrics = async (track) => {
   currentItem.value = null
 }
 
+let resolveWaiting = null
+
+const waitForQueue = () => new Promise(resolve => {
+  resolveWaiting = resolve
+})
+
+watch(downloadQueue, (queue) => {
+  if (queue.length > 0 && resolveWaiting) {
+    resolveWaiting()
+    resolveWaiting = null
+  }
+}, { deep: true })
+
 const downloadNext = async () => {
   while (true) {
     if (downloadQueue.value.length === 0) {
-      await delay(1000)
-      continue
+      await waitForQueue()
     }
+
+    if (downloadQueue.value.length === 0) continue
 
     const trackId = downloadQueue.value.shift()
     const track = await invoke('get_track', { trackId: trackId })

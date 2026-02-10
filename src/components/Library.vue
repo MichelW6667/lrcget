@@ -33,9 +33,14 @@
 
   <div v-else class="flex flex-col justify-center items-center w-full h-full">
     <div class="animate-spin text-xl text-brave-30"><Loading /></div>
-    <div v-if="isInitializing" class="flex flex-col items-center justify-center text-sm text-brave-40">
+    <div v-if="isInitializing" class="flex flex-col items-center justify-center text-sm text-brave-40 gap-2">
       <div>Initializing library...</div>
-      <div v-if="initializeProgress">{{ initializeProgress.filesScanned }}/{{ initializeProgress.filesCount }} files scanned</div>
+      <div v-if="initializeProgress" class="flex flex-col items-center gap-1">
+        <div class="w-48 h-1.5 bg-brave-15 rounded-full overflow-hidden">
+          <div class="h-full bg-brave-30 rounded-full transition-all duration-300" :style="{ width: progressPercent + '%' }"></div>
+        </div>
+        <div>{{ progressPercent }}% — {{ initializeProgress.filesScanned }}/{{ initializeProgress.filesCount }} files scanned</div>
+      </div>
     </div>
 
     <div v-else class="flex flex-col items-center justify-center text-sm text-brave-40">
@@ -45,7 +50,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { invoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
 import { Loading } from 'mdue'
@@ -102,6 +107,11 @@ const { open: openDownloadViewer, close: closeDownloadViewer } = useModal({
       closeDownloadViewer()
     }
   },
+})
+
+const progressPercent = computed(() => {
+  if (!initializeProgress.value || !initializeProgress.value.progress) return 0
+  return Math.round(initializeProgress.value.progress * 100)
 })
 
 const changeActiveTab = (tab) => {
